@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>学徒 · 宣传片舞台</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:1920px; height:1080px; overflow:hidden;
+    background:#000; color:#f5f5f7;
+    font-family:-apple-system,"SF Pro Display","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  #stage { position:relative; width:1920px; height:1080px; }
+
+  .scene {
+    position:absolute; inset:0;
+    display:flex; flex-direction:column;
+    justify-content:center; align-items:center;
+    opacity:0; pointer-events:none;
+  }
+
+  /* ══ 排版 ══ */
+  .hero   { font-size:132px; font-weight:700; letter-spacing:-4px; line-height:1.06; text-align:center; }
+  .hero-md{ font-size:86px;  font-weight:700; letter-spacing:-2.5px; line-height:1.14; text-align:center; }
+  .hero-sm{ font-size:58px;  font-weight:600; letter-spacing:-1.2px; line-height:1.25; text-align:center; }
+  .sub    { font-size:34px;  color:#86868b; letter-spacing:-.5px; text-align:center; line-height:1.5; }
+
+  .grad {
+    background:linear-gradient(135deg,#2997ff,#6e5aef 50%,#bf5af2);
+    -webkit-background-clip:text; background-clip:text;
+    -webkit-text-fill-color:transparent;
+  }
+
+  /* ══ Logo 方块 ══ */
+  .mark {
+    width:140px; height:140px; border-radius:32px;
+    background:linear-gradient(145deg,#2997ff,#6e5aef 60%,#bf5af2);
+    display:flex; align-items:center; justify-content:center;
+    font-size:74px; font-weight:700; color:#fff;
+    box-shadow:0 26px 70px rgba(41,151,255,.42), inset 0 2px 0 rgba(255,255,255,.3);
+  }
+
+  /* ══ 截图框 ══ */
+  .shot {
+    position:relative; border-radius:18px; overflow:hidden;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.13),
+      0 44px 110px rgba(0,0,0,.88),
+      0 0 160px rgba(41,151,255,.13);
+  }
+  .shot img { display:block; width:100%; height:auto; }
+
+  /* ══ 特性行 ══ */
+  .features { display:flex; flex-direction:column; width:1200px; }
+  .feat {
+    display:flex; align-items:center; gap:32px;
+    padding:32px 0;
+    border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  .feat:last-child { border-bottom:none; }
+  .feat .ico {
+    width:62px; height:62px; border-radius:16px; flex-shrink:0;
+    background:linear-gradient(145deg,rgba(41,151,255,.24),rgba(110,90,239,.24));
+    border:1px solid rgba(41,151,255,.32);
+    display:flex; align-items:center; justify-content:center;
+    font-size:29px;
+  }
+  .feat .t1 { font-size:37px; font-weight:600; letter-spacing:-.7px; margin-bottom:7px; }
+  .feat .t2 { font-size:26px; color:#86868b; letter-spacing:-.3px; line-height:1.45; }
+
+  /* ══ 对比卡 ══ */
+  .compare { display:flex; gap:46px; width:1540px; }
+  .cc { flex:1; padding:58px 50px; border-radius:28px;
+        background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.09); }
+  .cc.bad  { border-color:rgba(255,69,58,.24);  background:rgba(255,69,58,.05); }
+  .cc.good { border-color:rgba(48,209,88,.28);  background:rgba(48,209,88,.055); }
+  .cc h3 { font-size:33px; font-weight:600; letter-spacing:-.6px; margin-bottom:36px; }
+  .cc.bad h3  { color:#ff6b60; }
+  .cc.good h3 { color:#4ade80; }
+  .cc ul { list-style:none; }
+  .cc li { font-size:28px; line-height:1.62; color:#c7c7cc;
+           padding:15px 0 15px 44px; position:relative; letter-spacing:-.3px; }
+  .cc li::before { content:''; position:absolute; left:8px; top:28px;
+                   width:15px; height:2px; background:currentColor; opacity:.42; }
+
+  /* ══ 徽章 ══ */
+  .badges { display:flex; gap:18px; }
+  .badge { padding:15px 34px; border-radius:100px;
+           background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.13);
+           font-size:24px; color:#a1a1a6; }
+
+  /* ══ 光晕 ══ */
+  .glow { position:absolute; border-radius:50%; filter:blur(160px); pointer-events:none; }
+  .g1 { width:940px; height:940px; background:rgba(41,151,255,.17); top:-330px; left:-270px; }
+  .g2 { width:840px; height:840px; background:rgba(191,90,242,.14); bottom:-320px; right:-230px; }
+
+  /* ══ 入场动画（用 transition，JS 控制 class）══ */
+  .anim { transition: opacity .55s cubic-bezier(.16,1,.3,1), transform .55s cubic-bezier(.16,1,.3,1); }
+  .from-up   { opacity:0; transform:translateY(52px); }
+  .from-down { opacity:0; transform:translateY(-42px); }
+  .from-left { opacity:0; transform:translateX(-46px); }
+  .from-scale{ opacity:0; transform:scale(.94); }
+  .shown { opacity:1; transform:none; }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- ① 开场 -->
+  <div class="scene" id="sc1">
+    <div class="glow g1"></div><div class="glow g2"></div>
+    <div class="mark anim from-up" data-a="0">学</div>
+    <div class="hero anim from-up" data-a="260" style="margin-top:52px">学徒</div>
+    <div class="sub anim from-up" data-a="680" style="margin-top:38px">AI 先了解你，再教你</div>
+  </div>
+
+  <!-- ② 痛点 -->
+  <div class="scene" id="sc2">
+    <div class="glow g1"></div>
+    <div class="hero-md anim from-up" data-a="0">大多数 AI 家教</div>
+    <div class="hero-md grad anim from-up" data-a="380" style="margin-top:28px">对你一无所知</div>
+    <div class="sub anim from-up" data-a="820" style="margin-top:50px">却敢给你估分、出题、排计划</div>
+  </div>
+
+  <!-- ③ 对比 -->
+  <div class="scene" id="sc3">
+    <div class="hero-sm anim from-up" data-a="0" style="margin-bottom:66px">学徒不一样</div>
+    <div class="compare">
+      <div class="cc bad anim from-left" data-a="320">
+        <h3>普通 AI 家教</h3>
+        <ul>
+          <li>没数据也给精确分数</li>
+          <li>出题不看你会什么</li>
+          <li>点一下「已掌握」就算学会</li>
+          <li>每个 AI 各说各话</li>
+        </ul>
+      </div>
+      <div class="cc good anim from-up" data-a="620">
+        <h3>学徒</h3>
+        <ul>
+          <li>数据不足只给区间</li>
+          <li>不够了解你就不出题</li>
+          <li>必须独立做对才算掌握</li>
+          <li>所有 AI 共用一份记忆</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ④ 总览截图 -->
+  <div class="scene" id="sc4">
+    <div class="glow g1"></div>
+    <div class="hero-sm anim from-up" data-a="0" style="margin-bottom:54px">
+      它知道你在<span class="grad">哪个位置</span>
+    </div>
+    <div class="shot anim from-scale" data-a="340" style="width:1380px">
+      <img src="shots/01-dashboard.png" alt="">
+    </div>
+  </div>
+
+  <!-- ⑤ 估分 + 出卷 -->
+  <div class="scene" id="sc5">
+    <div class="glow g2"></div>
+    <div class="hero-sm anim from-up" data-a="0" style="margin-bottom:46px">
+      证据不足时，只给<span class="grad">区间</span>
+    </div>
+    <div style="display:flex; gap:34px; align-items:flex-start">
+      <div class="shot anim from-scale" data-a="340" style="width:730px">
+        <img src="shots/02-progress.png" alt="">
+      </div>
+      <div class="shot anim from-scale" data-a="640" style="width:730px">
+        <img src="shots/04-quiz.png" alt="">
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑥ 功能 -->
+  <div class="scene" id="sc6">
+    <div class="glow g1"></div>
+    <div class="hero-sm anim from-up" data-a="0" style="margin-bottom:58px">不只是聊天</div>
+    <div class="features">
+      <div class="feat anim from-left" data-a="300">
+        <div class="ico">◈</div>
+        <div><div class="t1">三合一 AI 辅导</div>
+             <div class="t2">讲题 · 补知识点 · 检查掌握 · 做演示，系统自动选底层</div></div>
+      </div>
+      <div class="feat anim from-left" data-a="620">
+        <div class="ico">◉</div>
+        <div><div class="t1">学习状态监控</div>
+             <div class="t2">本地识别书写 / 阅读 / 听讲 / 思考 / 分心，画面不上传</div></div>
+      </div>
+      <div class="feat anim from-left" data-a="940">
+        <div class="ico">◎</div>
+        <div><div class="t1">间隔复习验证掌握</div>
+             <div class="t2">只看解析不算会 —— 必须独立做对，隔天仍对才算掌握</div></div>
+      </div>
+      <div class="feat anim from-left" data-a="1260">
+        <div class="ico">◇</div>
+        <div><div class="t1">18 个 Agent 工具</div>
+             <div class="t2">跑代码 · 画图表 · 做 3D 场景 · 生成动画 · 导出视频</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑦ 结尾 -->
+  <div class="scene" id="sc7">
+    <div class="glow g1"></div><div class="glow g2"></div>
+    <div class="mark anim from-up" data-a="0">学</div>
+    <div class="hero anim from-up" data-a="260" style="font-size:100px;margin-top:52px">
+      AI 先了解你<br><span class="grad">再教你</span>
+    </div>
+    <div class="sub anim from-up" data-a="700" style="margin-top:46px">不了解你，它不编故事</div>
+    <div class="badges anim from-up" data-a="1000" style="margin-top:58px">
+      <div class="badge">MIT 开源</div>
+      <div class="badge">本地优先</div>
+      <div class="badge">隐私保护</div>
+      <div class="badge">完全离线可用</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/**
+ * 精确渲染器（2026-10-31）
+ *
+ * 不用 CSS @keyframes —— 那玩意在离屏渲染时不可靠（16s 后全黑）。
+ * 改成：给定时间 ms，直接算出每幕/每元素的 opacity 和 transform。
+ * 纯同步，无过渡依赖，每帧可复现。
+ */
+const SCENES = [
+  { el: 'sc1', from: 0,     to: 5000  },
+  { el: 'sc2', from: 5000,  to: 10000 },
+  { el: 'sc3', from: 10000, to: 16000 },
+  { el: 'sc4', from: 16000, to: 24000 },
+  { el: 'sc5', from: 24000, to: 32000 },
+  { el: 'sc6', from: 32000, to: 39000 },
+  { el: 'sc7', from: 39000, to: 45000 },
+];
+
+const FADE = 400;          // 每幕淡入淡出时长
+const ELEM_DUR = 620;      // 元素入场时长
+
+function ease(t) {
+  // cubic-bezier(.16,1,.3,1) 近似
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+window.renderAt = function (ms) {
+  for (const sc of SCENES) {
+    const el = document.getElementById(sc.el);
+    if (!el) continue;
+
+    // 场景整体透明度（两端淡入淡出）
+    let a = 0;
+    if (ms >= sc.from && ms < sc.to) {
+      const inT = clamp01((ms - sc.from) / FADE);
+      const outT = clamp01((sc.to - ms) / FADE);
+      a = Math.min(ease(inT), ease(outT));
+    }
+    el.style.opacity = a.toFixed(4);
+
+    // 场景内元素（按 data-a 延迟入场）
+    if (a > 0.01) {
+      const localMs = ms - sc.from;
+      const elems = el.querySelectorAll('[data-a]');
+      elems.forEach(function (e) {
+        const delay = parseInt(e.getAttribute('data-a'), 10) || 0;
+        const t = clamp01((localMs - delay) / ELEM_DUR);
+        const k = ease(t);
+
+        // 初始偏移类型
+        let dx = 0, dy = 0, sc0 = 1;
+        if (e.classList.contains('from-up'))    dy = 52;
+        if (e.classList.contains('from-down'))  dy = -42;
+        if (e.classList.contains('from-left'))  dx = -46;
+        if (e.classList.contains('from-scale')) sc0 = 0.94;
+
+        e.style.opacity = k.toFixed(4);
+        e.style.transform =
+          'translate(' + (dx * (1 - k)).toFixed(2) + 'px,' + (dy * (1 - k)).toFixed(2) + 'px)' +
+          ' scale(' + (sc0 + (1 - sc0) * k).toFixed(4) + ')';
+      });
+    }
+  }
+  return true;
+};
+
+// 初始全隐藏
+window.renderAt(0);
+
+// 等图片加载完
+window.__READY__ = false;
+const imgs = Array.from(document.images);
+let pending = imgs.filter(i => !i.complete).length;
+if (pending === 0) {
+  window.__READY__ = true;
+} else {
+  let done = 0;
+  imgs.forEach(img => {
+    if (img.complete) return;
+    img.addEventListener('load', () => { if (++done >= pending) window.__READY__ = true; });
+    img.addEventListener('error', () => { if (++done >= pending) window.__READY__ = true; });
+  });
+  // 兜底
+  setTimeout(() => { window.__READY__ = true; }, 5000);
+}
+</script>
+</body>
+</html>
