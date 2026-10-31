@@ -1,0 +1,788 @@
+/* ══════════════════════════════════════════════════════════════
+   学徒 · AI 学习系统 — 界面精修层（v2：苹果原生风 + 动效）
+   加载顺序：style.css → polish.css（本文件）
+   设计取向（用户确认）：
+     · 保持清爽蓝白，只做精致化打磨
+     · 电脑浏览器为主，舒适留白
+     · 重点：左侧导航 + 顶部栏 + 总览页
+     · 参照苹果系统原生风：大圆角、毛玻璃、柔和阴影、克制的动效
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── 1. 令牌：把全站蓝色统一到苹果蓝，圆角整体放大 ── */
+:root {
+  /* 覆盖 style.css 里的 DeepSeek 蓝 → 苹果蓝，全站配色随之统一 */
+  --ds-50: #eff6ff;
+  --ds-100: #e2eeff;
+  --ds-200: #cfe2ff;
+  --ds-450: #3b8bff;
+  --ds-500: #0a6cf1;
+
+  --apple-blue: #0a6cf1;
+  --apple-blue-deep: #0a5bd0;
+  --apple-blue-soft: #eff6ff;
+
+  --ink: #1d1d1f;          /* 苹果正文黑 */
+  --ink-sec: #5f5f66;      /* 次级文字 */
+  /* 三级文字要能在白底上达标：实测 #8e8e93 只有 3.26:1（低于 4.5:1），
+     小字号辅助文字看久了会累，所以压深到 4.6:1 以上。
+     后来又加了一层会透出浅蓝底（#eef4fb）的毛玻璃/环境光，白底达标的 #74747a
+     在蓝底上只有 4.19:1，因此再压深一档到 #6b6b72（蓝底上 ≥4.6:1）。 */
+  --ink-ter: #6b6b72;
+  --hair: rgba(0, 0, 0, .07);
+  --hair-strong: rgba(0, 0, 0, .12);
+
+  --surface: #ffffff;
+  --canvas: #f5f7fa;
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-pill: 980px;
+
+  --sh-1: 0 1px 2px rgba(16, 24, 40, .05);
+  --sh-2: 0 2px 10px rgba(16, 24, 40, .06);
+  --sh-3: 0 10px 34px rgba(16, 24, 40, .10);
+  --sh-blue: 0 6px 18px rgba(10, 108, 241, .22);
+
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --ease-spring: cubic-bezier(.34, 1.4, .5, 1);
+
+  /* 让 style.css 里所有旧变量也一起变苹果风 */
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --accent: #0a6cf1;
+  --accent-bg: #eff6ff;
+  --label-primary: #1d1d1f;
+  --label-secondary: #5f5f66;
+  --label-tertiary: #6b6b72;
+  --text-sec: #5f5f66;
+  --text-mute: #6b6b72;
+  --border-l1: rgba(0, 0, 0, .07);
+  --border-l2: rgba(0, 0, 0, .12);
+  --shadow-xs: var(--sh-1);
+  --shadow-sm: var(--sh-2);
+  --shadow-md: var(--sh-2);
+  --shadow-lg: var(--sh-3);
+}
+
+/* ── 2. 基础 ── */
+body {
+  color: var(--ink);
+  /* 底色放在 body 上；#ambient 与 #app 叠在它之上 */
+  background: #eef4fb;
+  letter-spacing: -.005em;
+}
+
+/*
+ * 环境光层：毛玻璃的"可透内容"。
+ *
+ * 关键认知（走过弯路）：磨砂玻璃之所以一眼看得出来，是因为**背后的细节被糊开了**。
+ * 如果背后是一片平滑渐变，模糊平滑渐变 = 还是平滑渐变，看上去就是"一块白板"。
+ * 但也**不能靠明显的圆点/圆圈**去堆细节 —— 那样看起来像儿童贴纸，很廉价。
+ * 高级感的做法是：
+ *   ① 大尺度、低饱和的斜向色域（不是一个个圆，是浑然一体的光）—— 决定格调；
+ *   ② 极细的噪点（1px 级）—— 提供"可被糊掉"的高频细节，肉眼看是质感不是图案；
+ *   ③ 一抹很淡的对角高光 —— 让整片背景有方向感。
+ * ② 是磨砂感的来源，但它必须细到"看不出是图案"。
+ */
+#ambient {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  z-index: 0; pointer-events: none;
+  /* 用 overflow:clip 把放大后的光斑裁掉，不让它撑出滚动条。
+     这里不能用 scale 后的元素去撑宽度：实测 390px 视口会被撑到 410px。 */
+  overflow: clip;
+  contain: paint;
+  background:
+    /* ① 大尺度斜向色域：用椭圆且拉得很长，边缘过渡很宽，
+       看起来是"一片光"而不是"一个圆"。 */
+    radial-gradient(120% 90% at 8% -10%, rgba(56, 132, 255, .34) 0%, rgba(56, 132, 255, 0) 58%),
+    radial-gradient(100% 80% at 105% 8%, rgba(120, 170, 255, .30) 0%, rgba(120, 170, 255, 0) 56%),
+    radial-gradient(130% 100% at 88% 108%, rgba(24, 96, 210, .24) 0%, rgba(24, 96, 210, 0) 60%),
+    radial-gradient(90% 70% at -8% 96%, rgba(126, 116, 220, .22) 0%, rgba(126, 116, 220, 0) 58%),
+    /* ③ 对角高光：给画面一个"光源在左上"的方向感 */
+    linear-gradient(132deg, rgba(255, 255, 255, .55) 0%, rgba(255, 255, 255, 0) 42%),
+    linear-gradient(160deg, #eef4fd 0%, #e9eff9 46%, #edf1fa 100%);
+  animation: ambientDrift 48s ease-in-out infinite alternate;
+}
+/*
+ * ② 极细噪点：磨砂质感的真正来源。
+ * 用 SVG feTurbulence 生成 1px 级噪声（比 CSS 圆点细腻得多，看不出是图案），
+ * 以极低透明度铺一层。玻璃糊掉它之后，就是那种"细腻的雾面"。
+ */
+#ambient::before {
+  content: ''; position: absolute; inset: 0;
+  opacity: .5;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.62'/%3E%3C/svg%3E");
+  background-size: 140px 140px;
+}
+/* 再加一层更细的斜纹（很淡，只为让"雾面"有轻微方向） */
+#ambient::after {
+  content: ''; position: absolute; inset: 0;
+  background-image: repeating-linear-gradient(122deg,
+    rgba(255, 255, 255, .16) 0 1px, rgba(255, 255, 255, 0) 1px 7px);
+  opacity: .42;
+}
+@keyframes ambientDrift {
+  from { transform: translate3d(-1.2%, -0.8%, 0) scale(1.04); }
+  to   { transform: translate3d(1.2%, 1.0%, 0) scale(1.08); }
+}
+/* 环境光是纯装饰层，绝不能撑出滚动条 */
+html, body { overflow-x: hidden; }
+
+/* 应用层要浮在环境光之上。
+   ⚠️ #app 的定位会连带影响全屏遮罩：它能成为 fixed 的包含块候选，
+   所以全屏遮罩一律在 .proctor-overlay 那里显式 fixed 锁定视口（见下）。
+   z-index 用 isolation 造层叠上下文，避免再用 position 制造已定位祖先。 */
+#ambient { z-index: 0; }
+#app { background: transparent; isolation: isolate; }
+/* 主区不能是不透明白，否则会把环境光整个盖掉（那样所有卡片都失去可透内容，
+   玻璃感就全没了 —— 这是"看着还是平的"最大一层遮罩） */
+#main { background: transparent; }
+/* #content 也不能有底色：它是内容区，一旦不透明白，卡片背后就是纯白 */
+#content { background: transparent; }
+
+::selection { background: rgba(10, 108, 241, .18); }
+
+/* 细滚动条：hover 才明显 */
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, .16); border-radius: 99px;
+  border: 3px solid transparent; background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, .30); background-clip: content-box; }
+
+/* ── 3. 侧栏：真毛玻璃（半透明 + 模糊 + 亮边 + 抬升） ── */
+#sidebar {
+  /* 之前是不透明渐变 → backdrop-filter 模糊纯色 = 纯色，看不出玻璃。
+     改成半透明后，背后那层会流动的环境光透过来，玻璃感才成立。 */
+  background: rgba(255, 255, 255, .46);
+  -webkit-backdrop-filter: blur(34px) saturate(190%);
+  backdrop-filter: blur(34px) saturate(190%);
+  /* 右侧亮边 = 玻璃板立起来的"厚度" */
+  border-right: 1px solid rgba(255, 255, 255, .55);
+  box-shadow:
+    inset -1px 0 0 rgba(15, 23, 42, .05),
+    8px 0 30px -14px rgba(16, 40, 88, .22);
+}
+/* 玻璃边缘的高光，苹果风里很关键的一条细线。
+   ⚠️ position:relative 只能给桌面端 —— 手机端侧栏在 style.css 里是 position:fixed
+   （抽屉式），如果这里无脑写 relative 会覆盖掉它，侧栏就退回占位的普通列，
+   把内容区挤到只剩 115px（实测 390px 视口下所有页面都"横向溢出"）。 */
+#sidebar::after {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 1px;
+  background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,0), rgba(255,255,255,.65));
+  pointer-events: none;
+}
+@media (min-width: 861px) {
+  #sidebar { position: relative; }
+}
+.sidebar-body { position: relative; }
+
+/* 侧栏选中指示器：白胶囊滑动到当前项（比瞬间切换自然得多）
+   left/right 对齐 .sidebar-body 的 12px 内边距，才能和导航项等宽 */
+.nav-indicator {
+  position: absolute; left: 12px; right: 12px; top: 0; height: 0;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .07), 0 0 0 1px rgba(16, 24, 40, .05), 0 6px 16px rgba(15, 23, 42, .06);
+  z-index: 0; pointer-events: none;
+  transition: transform .34s var(--ease-spring), height .3s var(--ease), opacity .2s var(--ease);
+  opacity: 0;
+}
+.nav-item { position: relative; z-index: 1; }
+/* 胶囊由指示器画，导航项自身不再画底 */
+.nav-item.active { background: transparent; box-shadow: none; }
+.nav-item.active .nav-icon { position: relative; }
+
+.brand-mark {
+  background: linear-gradient(145deg, #3b8bff, var(--apple-blue));
+  border-radius: 9px;
+  box-shadow: 0 3px 10px rgba(10, 108, 241, .30);
+  transition: transform .3s var(--ease-spring);
+}
+.brand-mark:hover { transform: scale(1.06) rotate(-3deg); }
+.brand-name { color: var(--ink); font-weight: 650; }
+.brand-tag {
+  color: var(--apple-blue); border-color: var(--ds-200);
+  background: var(--ds-50); border-radius: 6px;
+}
+
+.new-session {
+  border-radius: var(--r-md);
+  border-color: var(--hair-strong);
+  color: var(--ink);
+  background: rgba(255, 255, 255, .9);
+  box-shadow: var(--sh-1);
+  transition: transform .18s var(--ease), background .18s, border-color .18s, box-shadow .18s;
+}
+.new-session:hover {
+  background: #fff; border-color: rgba(10, 108, 241, .35);
+  box-shadow: 0 3px 14px rgba(10, 108, 241, .14);
+}
+.new-session:active { transform: scale(.985); }
+
+.nav-group-title { color: var(--ink-ter); letter-spacing: .07em; }
+
+.nav-item {
+  color: var(--ink-sec);
+  border-radius: var(--r-md);
+  padding: 8px 10px;
+  transition: background .18s var(--ease), color .18s var(--ease), transform .18s var(--ease), box-shadow .18s var(--ease);
+}
+.nav-item:hover { background: rgba(10, 108, 241, .07); color: var(--apple-blue-deep); }
+.nav-item .nav-icon {
+  width: 22px; height: 22px; display: inline-flex;
+  align-items: center; justify-content: center;
+  border-radius: 7px; font-size: 13px;
+  transition: background .18s var(--ease), color .18s var(--ease);
+}
+/* 选中的胶囊由 #nav-indicator 绘制（见上方），这里只管字色与图标 */
+.nav-item.active {
+  color: var(--ink); font-weight: 600;
+}
+.nav-item.active .nav-icon {
+  background: var(--apple-blue); color: #fff;
+  box-shadow: 0 2px 6px rgba(10, 108, 241, .35);
+}
+
+.nav-badge { border-radius: var(--r-pill); font-weight: 650; }
+.nav-badge:not(.hidden) { animation: badgePop .42s var(--ease-spring) both; }
+
+.user-chip { border-radius: var(--r-md); transition: background .18s var(--ease); }
+.user-chip:hover { background: rgba(10, 108, 241, .07); }
+.user-avatar {
+  background: linear-gradient(145deg, #e2eeff, #cfe2ff);
+  color: var(--apple-blue-deep); font-weight: 650;
+  box-shadow: inset 0 0 0 1px rgba(10, 108, 241, .12);
+}
+
+/* 手机端遮罩 */
+#sidebar-backdrop {
+  display: none; position: fixed; inset: 0; z-index: 70;
+  background: rgba(15, 23, 42, .28);
+  backdrop-filter: blur(3px);
+  border: 0; padding: 0;
+}
+#sidebar-backdrop.open { display: block; animation: fadeIn .22s var(--ease) both; }
+
+/* ── 4. 顶栏：真毛玻璃 —— 内容从它下面滑过 ── */
+#topbar {
+  background: rgba(255, 255, 255, .42);
+  /* 顶栏很薄，模糊必须开大才压得住背后的高频细节（实测 34px 时细节只降 35%，
+     提到 40px 才够"磨砂"） */
+  -webkit-backdrop-filter: blur(40px) saturate(190%);
+  backdrop-filter: blur(40px) saturate(190%);
+  border-bottom: 1px solid rgba(255, 255, 255, .55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .9),
+    inset 0 -1px 0 rgba(15, 23, 42, .06),
+    0 10px 30px -12px rgba(16, 40, 88, .26);
+  z-index: 30;
+}
+/* ⚠️ #content 不能加 position:relative / z-index！
+   它一旦成为"已定位祖先"，任何 absolute;inset:0 的全屏遮罩都会以它为基准，
+   而不再向上找视口 —— 摄像头页的走神警告 .proctor-overlay 正是这样，
+   实测从 1404×857(全屏) 缩成 1150×801(仅内容区)，警告就不再是全屏红屏了。
+
+   顶栏与内容的层级：顶栏本身已经在 style.css 的 flex 布局里固定在顶部
+   （#main 是纵向 flex，#topbar 是 flex-shrink:0 的第一项），
+   本来就不需要 sticky，也不需要 z-index —— 什么都不用加。 */
+#content { padding: 28px 28px 44px; }
+.page { max-width: 1120px; }
+
+/* 走神警告必须是**全屏**红屏。
+   现在页面上已经有若干已定位祖先（polish.css 的层叠需要），
+   所以这里显式改成 fixed 锁定视口，不再依赖祖先链，行为更稳。 */
+.proctor-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 400 !important;
+}
+.icon-btn {
+  border-radius: 9px;
+  transition: background .18s var(--ease), transform .18s var(--ease);
+}
+.icon-btn:active { transform: scale(.92); }
+
+.chip {
+  background: rgba(255, 255, 255, .8);
+  border-color: var(--hair);
+  border-radius: var(--r-pill);
+  transition: background .2s var(--ease), border-color .2s var(--ease), transform .2s var(--ease);
+}
+.chip.accent { background: var(--ds-50); border-color: var(--ds-200); color: var(--apple-blue-deep); font-weight: 600; }
+.chip.ok { background: #e9f9ef; border-color: #c6efd5; color: #157f3c; font-weight: 600; }
+.chip.warn { background: #fff6e6; border-color: #ffe2b8; color: #a35b00; font-weight: 600; }
+.chip.ok::before, .chip.warn::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  margin-right: 1px;
+  animation: pulseDot 2.2s ease-in-out infinite;
+}
+.chip.ok::before { background: #22c55e; }
+.chip.warn::before { background: #f59e0b; }
+
+/* ── 5. 卡片：真·玻璃板（半透明 + 模糊 + 亮边 + 投影抬升） ──
+   毛玻璃"浮起来"的立体感 = 四件事同时做：
+     ① 背景半透明 —— 否则模糊不到背后的环境光；
+     ② backdrop-filter 模糊背后 —— 玻璃的"雾"感；
+     ③ 顶部亮边 + 斜向反光 —— 玻璃的"厚度"和反光；
+     ④ 面积够大的柔和投影 + 悬停时投影变大 —— 视觉上离开纸面。
+   少任何一条，看起来就还是"一块平的白卡"。
+
+   ★ 反光为什么用 background 而不是 ::before 伪元素？
+   伪元素是定位元素，会画在 static 内容**之上**，为了不让它盖住文字就必须给
+   所有子元素加 `position:relative; z-index:1`。那条规则会连锁破坏其他组件：
+   `.camera-layout` 被改成 relative 后，里面本该铺满视口的走神警告遮罩
+   (.proctor-overlay) 直接失效。改用多层背景后，反光天然在内容之下，
+   一条定位规则都不需要。 */
+.card {
+  /* ⚠️ 这里**不能加 position:relative**！
+     卡片里有个 .proctor-overlay（走神警告），它是 position:absolute; inset:0，
+     靠"最近的已定位祖先"定位。原本整条祖先链都是 static，所以它铺满整个视口，
+     是"全屏红屏警告"。一旦给 .card 加 relative，它就缩成卡片大小 ——
+     实测从 1404×857(全屏) 变成 1092×682(卡片)，警告效果直接失效。 */
+  background:
+    /* ③ 顶部斜向反光（相当于原来的 ::before，但它永远在内容之下） */
+    linear-gradient(180deg, rgba(255, 255, 255, .55) 0%, rgba(255, 255, 255, .10) 22%, rgba(255, 255, 255, 0) 46%),
+    rgba(255, 255, 255, .58);
+  -webkit-backdrop-filter: blur(22px) saturate(185%);
+  backdrop-filter: blur(22px) saturate(185%);
+  border: 1px solid rgba(255, 255, 255, .70);
+  border-radius: var(--r-lg);
+  padding: 20px 22px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .92),
+    inset 0 -1px 0 rgba(255, 255, 255, .35),
+    0 1px 2px rgba(16, 24, 40, .05),
+    0 10px 26px -8px rgba(16, 40, 88, .18),
+    0 22px 48px -20px rgba(16, 40, 88, .22);
+  transition: box-shadow .32s var(--ease), transform .32s var(--ease), border-color .32s var(--ease), background .32s var(--ease);
+}
+/* 悬停：投影明显变大 = 抬得更高 */
+.card:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .62) 0%, rgba(255, 255, 255, .12) 22%, rgba(255, 255, 255, 0) 46%),
+    rgba(255, 255, 255, .66);
+  border-color: rgba(255, 255, 255, .85);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    inset 0 -1px 0 rgba(255, 255, 255, .4),
+    0 2px 4px rgba(16, 24, 40, .06),
+    0 18px 40px -10px rgba(16, 40, 88, .24),
+    0 34px 70px -26px rgba(16, 40, 88, .28);
+  transform: translateY(-2px);
+}
+.card-header { margin-bottom: 16px; }
+.card-header h3 { color: var(--ink); font-size: 15px; font-weight: 650; letter-spacing: -.015em; }
+.card-sub, .card-desc, .hint { color: var(--ink-ter); }
+
+/* ── 6. 总览：目标卡（最厚的一块玻璃，抬得最高） ── */
+#page-dashboard > .card:first-child {
+  position: relative; overflow: hidden;
+  border-color: rgba(255, 255, 255, .78);
+  border-radius: var(--r-xl);
+  /* 保留一点蓝色高光，但底色必须半透明，否则会盖住背后的环境光 */
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(10, 108, 241, .16) 0%, rgba(10, 108, 241, 0) 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, .52) 0%, rgba(255, 255, 255, .34) 100%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  backdrop-filter: blur(28px) saturate(200%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    inset 0 -1px 0 rgba(255, 255, 255, .4),
+    0 2px 4px rgba(16, 24, 40, .05),
+    0 18px 44px -12px rgba(16, 40, 88, .26),
+    0 40px 80px -30px rgba(16, 40, 88, .30);
+  padding: 26px 28px;
+}
+#page-dashboard > .card:first-child:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .98),
+    inset 0 -1px 0 rgba(255, 255, 255, .45),
+    0 3px 6px rgba(16, 24, 40, .06),
+    0 26px 56px -14px rgba(16, 40, 88, .30),
+    0 54px 96px -34px rgba(16, 40, 88, .34);
+}
+#page-dashboard > .card:first-child::after {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .9), transparent);
+}
+.goal-head { align-items: center; }
+.goal-num {
+  font-size: 42px; font-weight: 700; letter-spacing: -.035em;
+  color: var(--ink); font-variant-numeric: tabular-nums;
+}
+.goal-unit { color: var(--ink-ter); font-size: 13px; }
+.goal-target { font-size: 13px; color: var(--ink-sec); margin-top: 6px; }
+.goal-target b { color: var(--apple-blue-deep); font-weight: 650; }
+
+.progress-bar {
+  height: 10px; border-radius: var(--r-pill);
+  background: rgba(10, 108, 241, .10);
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(16, 24, 40, .05);
+}
+.progress-fill {
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, #3b8bff, var(--apple-blue));
+  box-shadow: 0 1px 4px rgba(10, 108, 241, .35);
+  position: relative;
+  transition: width .8s var(--ease);
+}
+.progress-fill::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent);
+  animation: barShine 2.6s ease-in-out infinite;
+}
+.progress-info { color: var(--ink-ter); font-size: 12.5px; }
+
+/* ── 7. 统计：四块小玻璃 ──
+   ⚠️ 只能作用于总览页的 .stats-grid！
+   摄像头页（学习监控）的侧栏也用了 .stat-item 做紧凑的竖排列表
+   （见 style.css 的 .camera-stats .stat-item），一旦把玻璃样式写成全局的，
+   那四行就会各自变成一个浮起来的玻璃方块 —— 我曾因此把学习监控改得面目全非。
+   所以这里全部限定在 .stats-grid / .estimate-grid 内。 */
+.stats-grid { gap: 10px; }
+.stats-grid .stat-item,
+.estimate-grid .estimate-item {
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, .38);
+  -webkit-backdrop-filter: blur(22px) saturate(185%);
+  backdrop-filter: blur(22px) saturate(185%);
+  border: 1px solid rgba(255, 255, 255, .68);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .9),
+    0 4px 14px -6px rgba(16, 40, 88, .16);
+  transition: transform .26s var(--ease), box-shadow .26s var(--ease), background .26s var(--ease);
+}
+.stats-grid .stat-item { padding: 14px 10px; }
+.stats-grid .stat-item:hover,
+.estimate-grid .estimate-item:hover {
+  transform: translateY(-3px);
+  background: rgba(255, 255, 255, .62);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    0 12px 28px -8px rgba(16, 40, 88, .24);
+}
+.stat-value { color: var(--ink); font-size: 22px; font-weight: 650; letter-spacing: -.03em; }
+.stat-label { color: var(--ink-ter); }
+
+/* ── 8. 今日任务：勾选弹性动效 ── */
+.task {
+  border-radius: var(--r-md); padding: 12px 12px;
+  border-bottom: 1px solid var(--hair);
+  transition: background .2s var(--ease);
+}
+.task:hover { background: #fafbfd; }
+.task-check {
+  border-radius: 8px; border-color: var(--hair-strong);
+  transition: background .22s var(--ease), border-color .22s var(--ease), transform .22s var(--ease-spring), box-shadow .22s var(--ease);
+}
+.task-check:active { transform: scale(.86); }
+.task-check.done {
+  background: linear-gradient(145deg, #3b8bff, var(--apple-blue));
+  border-color: var(--apple-blue);
+  box-shadow: 0 2px 8px rgba(10, 108, 241, .35);
+  animation: checkPopPlain .42s var(--ease-spring) backwards;
+}
+.task-name { color: var(--ink); }
+.task-meta { color: var(--ink-ter); }
+.task-dur { color: var(--ink-sec); }
+
+/* ── 9. 按钮：苹果风按压反馈 ── */
+.btn {
+  border-radius: var(--r-md);
+  font-weight: 550;
+  transition: transform .16s var(--ease), background .18s var(--ease), border-color .18s var(--ease), box-shadow .18s var(--ease), opacity .18s;
+}
+.btn:active:not(:disabled) { transform: scale(.975); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary {
+  /* 渐变压得克制一点：浅端也要让白字达到 4.5:1（原先浅端只有 3.25:1） */
+  background: linear-gradient(180deg, #0a6cf1, #0a5bd0);
+  box-shadow: var(--sh-blue);
+}
+.btn-primary:not(:disabled):hover {
+  background: linear-gradient(180deg, #0a5bd0, #084cad);
+  box-shadow: 0 8px 22px rgba(10, 108, 241, .30);
+}
+.btn-accent { background: var(--apple-blue); }
+.btn-secondary {
+  background: rgba(255, 255, 255, .9);
+  border-color: var(--hair-strong);
+  color: var(--ink);
+  box-shadow: var(--sh-1);
+}
+.btn-secondary:not(:disabled):hover {
+  background: #fff; border-color: rgba(10, 108, 241, .35); color: var(--apple-blue-deep);
+}
+.btn-ghost:hover { background: rgba(10, 108, 241, .08); color: var(--apple-blue-deep); }
+
+/* ── 10. 表单：苹果式圆角与聚焦环 ── */
+input[type="text"], input[type="number"], input[type="password"],
+input[type="date"], input[type="datetime-local"], select, textarea {
+  border-radius: 10px;
+  border-color: var(--hair-strong);
+  background: #fff;
+  transition: border-color .18s var(--ease), box-shadow .18s var(--ease), background .18s var(--ease);
+}
+input:hover, select:hover, textarea:hover { border-color: rgba(0, 0, 0, .2); }
+input:focus, select:focus, textarea:focus, .q-textarea:focus {
+  border-color: var(--ds-450);
+  box-shadow: 0 0 0 4px rgba(10, 108, 241, .14);
+  outline: none;
+}
+.form-group > label { color: var(--ink-sec); font-weight: 600; }
+.checkbox-group > label, .subject-selector > label {
+  border-radius: var(--r-md); border-color: var(--hair-strong);
+  transition: transform .18s var(--ease), border-color .18s var(--ease), background .18s var(--ease);
+}
+.checkbox-group > label:hover, .subject-selector > label:hover { border-color: rgba(10, 108, 241, .4); }
+.subject-selector > label.checked { box-shadow: 0 2px 10px rgba(10, 108, 241, .16); }
+
+/* ── 11. 空状态 / 列表 / 活动 ── */
+.empty {
+  padding: 40px 18px;
+  color: var(--ink-ter);
+  /* 虚线框的空状态也做成玻璃：浅一点，避免抢戏 */
+  background: rgba(255, 255, 255, .30);
+  -webkit-backdrop-filter: blur(10px) saturate(170%);
+  backdrop-filter: blur(10px) saturate(170%);
+  border: 1px dashed rgba(255, 255, 255, .85);
+  border-radius: var(--r-md);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+.activity { border-bottom: 1px solid var(--hair); }
+.act-icon {
+  border-radius: 9px;
+  transition: transform .24s var(--ease-spring);
+}
+.activity:hover .act-icon { transform: scale(1.08); }
+
+/* ── 12. 表格：窄屏安全滚动 ──
+   ⚠️ min-width 必须限定在 .card.flush 里！进度页有两张表（科目预估表、数据质量表）
+   生成在**普通 .card** 中，而普通卡片没有横向滚动容器；一旦给 .data-table 全局
+   加 min-width:560px，390px 屏幕下表格会超出卡片 176px，最后一列（怎么补/依据）
+   完全够不到 —— 因为 #content 不能横滚、html 又是 overflow-x:hidden
+   （实测 390px：表 520px vs 卡 359px，最后一列 left=393 > 390，内容永久看不见）。 */
+.card.flush { overflow-x: auto; }
+.card.flush .data-table { min-width: 560px; }
+/* 普通卡片里的宽表格：给它自己一个横向滚动容器，别把内容挤出去 */
+.card:not(.flush) > .data-table { display: block; overflow-x: auto; }
+/* 表头做成很浅的玻璃条；行悬停时用半透明白，避免把玻璃底盖死 */
+.data-table th {
+  color: var(--ink-ter);
+  background: rgba(255, 255, 255, .42);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.data-table td { border-bottom-color: var(--hair); }
+.data-table tbody tr { transition: background .16s var(--ease); }
+.data-table tbody tr:hover { background: rgba(255, 255, 255, .40); }
+
+/* ── 13. 聊天 / 答题：高度与边距 ── */
+/* ⚠️ 必须重述 .chat-card{padding:0}！style.css 的设计是表头分隔线/输入区**通栏贴边**，
+   而上面 .card 的 padding:20px 22px 是同优先级、本文件后加载 → 会把 0 覆盖掉，
+   表头线和输入区被内缩 23px，通栏设计失效。 */
+.chat-card {
+  height: min(720px, calc(100dvh - var(--topbar-h) - 56px));
+  min-height: 360px; border-radius: var(--r-lg);
+  padding: 0;
+}
+/* 聊天底也走玻璃，气泡才有"浮在玻璃上"的层次 */
+.chat-messages {
+  min-height: 0;
+  background: rgba(255, 255, 255, .22);
+  -webkit-backdrop-filter: blur(12px) saturate(170%);
+  backdrop-filter: blur(12px) saturate(170%);
+}
+.chat-input-area {
+  background: rgba(255, 255, 255, .55);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .85);
+}
+.chat-input-area textarea { margin: 0; min-height: 40px; border-radius: var(--r-md); }
+/* 解答题的 textarea 在 style.css 里带 margin-left:22px（与题干对齐）
+   ⚠️ 选择器必须是 .q-textarea —— 它挂的就是那个 textarea 本身；
+   早期写的 `.q-input textarea` / `.q-input .q-textarea` 是**死规则**
+   （实测候选数 0：.q-input 就是填空那个 input，里面没有 textarea）。
+   width 用 calc 扣掉那 22px，否则右边界会溢出卡片内边界（窄屏尤其明显）。 */
+.q-textarea { width: calc(100% - 22px); }
+.q-opt { border-radius: var(--r-md); transition: border-color .18s var(--ease), background .18s var(--ease), transform .18s var(--ease); }
+.q-opt:active { transform: scale(.995); }
+
+/* ── 14. Toast ── */
+#toast-wrap { width: min(100% - 24px, 560px); bottom: max(18px, env(safe-area-inset-bottom)); }
+.toast {
+  width: min(100%, 560px); max-width: 100%;
+  overflow-wrap: anywhere;
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 14px 40px rgba(16, 24, 40, .28);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   15. 动效总成
+   ══════════════════════════════════════════════════════════════ */
+
+/* 页面切换：淡入 + 轻微上移 */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(10px) scale(.995); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes badgePop {
+  0% { transform: scale(.4); opacity: 0; }
+  60% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); }
+}
+/* ⚠️ checkPop 的每一帧都必须带上 translate(-50%,-50%)！
+   CSS 动画的 transform 是**完全替换**而非叠加：只在关键帧里写 scale，
+   就会把 style.css 里 .ann-mark 用于居中的 transform:translate(-50%,-50%) 整个抹掉，
+   再配 fill:both 让它永久残留 → 所有 ✓/✗ 标记系统性偏右 15px、偏下 15px。 */
+@keyframes checkPop {
+  0% { transform: translate(-50%, -50%) scale(.6); }
+  55% { transform: translate(-50%, -50%) scale(1.16); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+/* 勾选框用的版本：它没有 translate 定位，单独一套，避免互相干扰 */
+@keyframes checkPopPlain {
+  0% { transform: scale(.6); }
+  55% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .45; transform: scale(.82); }
+}
+@keyframes barShine {
+  0% { transform: translateX(-120%); }
+  55%, 100% { transform: translateX(220%); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes skeleton {
+  0% { background-position: -180% 0; }
+  100% { background-position: 180% 0; }
+}
+
+/* 仅在一次导航后触发卡片错落入场
+   注意：入场动画现在由 JS（playEnter，Web Animations API）驱动 —— 见 app.js。
+   原因：用 CSS class 在同一任务里 remove+add，浏览器判定最终状态未变，不会重播
+   （实测 getAnimations() 为空、两次截图 md5 一致）。这里的 @keyframes 保留给
+   其他需要 CSS 动画的场景（徽标、勾选、流光等）。 */
+
+/* 加载中的旋转圈更顺滑 */
+.spinner { animation: spin .85s linear infinite; }
+
+/* 骨架微光（识别/分析等待时用） */
+.skeleton {
+  background: linear-gradient(90deg, #eef1f6 25%, #f7f9fc 50%, #eef1f6 75%);
+  background-size: 220% 100%;
+  animation: skeleton 1.35s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* 批改标记与框选：入场弹一下（backwards 而非 both，避免动画结束后残留 transform） */
+.ann-mark { animation: checkPop .3s var(--ease-spring) backwards; }
+.bx { transition: border-color .18s var(--ease), background .18s var(--ease); }
+.bx.selected { box-shadow: 0 0 0 4px rgba(245, 158, 11, .18); }
+
+/* 进度条 / 比例条：宽度增长 */
+.pp-fill, .bar-fill { transition: width .8s var(--ease); }
+
+/* 尊重"减少动态效果" */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── 16. 键盘可达性 ── */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid rgba(10, 108, 241, .40);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* ── 17. 响应式 ── */
+@media (max-width: 1080px) {
+  #content { padding: 22px 20px 40px; }
+  .goal-num { font-size: 36px; }
+}
+@media (max-width: 860px) {
+  #content { padding: 18px 14px 32px; }
+  #topbar { height: auto; min-height: var(--topbar-h); padding: 9px 12px; gap: 7px; }
+  .topbar-left { gap: 6px; }
+  #page-title { font-size: 15px; }
+  .topbar-right { gap: 4px; max-width: 46%; overflow: hidden; }
+  .topbar-right .chip { max-width: 48%; overflow: hidden; text-overflow: ellipsis; }
+  #menu-btn { flex-shrink: 0; }
+  #sidebar { z-index: 80; box-shadow: var(--sh-3); }
+  .card { padding: 16px; margin-bottom: 12px; }
+  .card-header { align-items: flex-start; }
+  .card-actions { flex-wrap: wrap; justify-content: flex-end; }
+  #page-dashboard > .card:first-child { padding: 20px; }
+  .goal-num { font-size: 34px; }
+  .stats-grid, .estimate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .chat-card { height: calc(100dvh - var(--topbar-h) - 36px); min-height: 330px; }
+  .chat-messages { padding: 14px; gap: 12px; }
+  .chat-input-area { padding: 10px 12px; }
+  .chat-input-area textarea { min-width: 0; }
+  .q-input { margin-left: 10px; }
+  .q-textarea { width: calc(100% - 22px); max-width: 100%; }
+}
+@media (max-width: 520px) {
+  #content { padding: 12px 10px 28px; }
+  #topbar { padding-inline: 8px; }
+  #page-sub { display: none; }
+  .topbar-right .chip { padding-inline: 7px; font-size: 11px; }
+  .card { padding: 14px; border-radius: 14px; }
+  .card-header h3 { font-size: 14px; }
+  #page-dashboard > .card:first-child { padding: 18px 16px; border-radius: var(--r-lg); }
+  .goal-num { font-size: 32px; }
+  .goal-head > div:last-child { width: 100%; text-align: left !important; }
+  .goal-head > div:last-child .goal-big { justify-content: flex-start !important; }
+  .btn-group .btn { flex: 1 1 auto; }
+  .chat-msg { max-width: 96%; }
+  .chat-bubble { padding: 9px 11px; }
+  .chat-input-area { gap: 6px; }
+  .chat-input-area .btn { padding-inline: 11px; }
+  .card.flush .data-table { min-width: 520px; }
+}
+
+/* ── 18. 打印 ── */
+@media print {
+  body, #app, #main, #content { height: auto !important; min-height: 0 !important; overflow: visible !important; background: #fff !important; }
+  #content { padding: 0 !important; }
+  .page { display: none !important; max-width: none !important; animation: none !important; }
+  .page.active { display: block !important; }
+  #sidebar-backdrop { display: none !important; }
+  .card, .chat-card {
+    height: auto !important; overflow: visible !important;
+    box-shadow: none !important; border-color: #ddd !important;
+    break-inside: avoid; animation: none !important;
+    /* 打印要的是纯白无边框排版：卡片自身的玻璃底/模糊/内缩全部去掉，
+       否则每张卡会带 20/22px 内缩 + 半透明灰底 + 多层渐变 */
+    padding: 0 !important;
+    background: #fff !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .progress-fill::after, .nav-badge { animation: none !important; }
+  .data-table { min-width: 0 !important; font-size: 11px; }
+  .card.flush .data-table { min-width: 0 !important; }
+  .q-item, .q-head, .q-text, .q-input, .q-textarea { break-inside: avoid; }
+  .q-input, .q-textarea { max-width: none; }
+}

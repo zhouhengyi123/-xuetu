@@ -1,0 +1,33 @@
+{
+  "name": "xuetu-app",
+  "version": "1.1.0",
+  "description": "学徒 · AI 学习系统 —— 把高考变成一条能看见的进度条",
+  "main": "electron-main.js",
+  "author": "zhoudapeng",
+  "license": "MIT",
+  "keywords": [
+    "education",
+    "ai-tutor",
+    "gaokao",
+    "electron",
+    "deepseek",
+    "study-planner"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/xuetu-app.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "setup": "node scripts/setup-vendor.cjs",
+    "test": "node 跑测试.cjs",
+    "stats": "node stats-server.cjs"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "@electron/packager": "^18.3.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
