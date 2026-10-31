@@ -5881,8 +5881,84 @@ const App = (() => {
     const info = $('set-model-info');
     if (info) info.textContent = cfg.apiKey ? '已配置' : '未配置';
     renderMemoryList();
+    // ★ 匿名使用统计卡片（2026-10-31 修）
+    //   之前 index.html 有完整卡片，但**一个 JS 绑定都没有** ——
+    //   按钮点了没反应、状态永远停在「默认关闭」、地址框永远空白。
+    renderUsageStats();
     // 进设置页时后台探一次语音服务（不阻塞渲染）
     Speech.check(false).then(() => renderTtsSettings()).catch(() => {});
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  匿名使用统计卡片（2026-10-31）
+  //  数据层在 shared/usage-stats.js（UsageStats），这里只管 UI。
+  //  隐私：默认关闭、只发匿名计数、随时可关。
+  // ════════════════════════════════════════════════════════════
+  function renderUsageStats() {
+    if (typeof UsageStats === 'undefined') return;
+    const st = $('usage-status');
+    const ep = $('usage-endpoint');
+    const metaEl = $('usage-meta');
+
+    let s = null;
+    try { s = UsageStats.status(); } catch (e) { return; }
+
+    // 地址框：只在为空时回填，避免覆盖用户正在输入的内容
+    if (ep && !ep.value) ep.value = s.endpoint || UsageStats.DEFAULT_ENDPOINT;
+
+    if (st) {
+      st.textContent = s.enabled ? '已开启（匿名）' : '默认关闭';
+      st.style.color = s.enabled ? 'var(--ok, #22c55e)' : '';
+    }
+
+    if (metaEl) {
+      if (!s.launches) {
+        metaEl.textContent = '';
+      } else {
+        const last = s.lastPush ? fmtAgo(new Date(s.lastPush).toISOString()) : '从未';
+        metaEl.textContent = '本机匿名 ID：' + String(s.anonId || '').slice(0, 18) +
+          ' · 累计启动 ' + s.launches + ' 次 · 最近上报：' + last;
+      }
+    }
+  }
+
+  /** 绑定统计卡片三个按钮（只在设置页首次进入后绑一次） */
+  let usageStatsBound = false;
+  function bindUsageStats() {
+    if (usageStatsBound) return;
+    if (typeof UsageStats === 'undefined') return;
+    usageStatsBound = true;
+
+    on('btn-usage-enable', 'click', async () => {
+      const ep = $('usage-endpoint');
+      const url = (ep && ep.value.trim()) || UsageStats.DEFAULT_ENDPOINT;
+      // ★ 先切状态再上报：enable() 内部会 await push()（最长 8s），
+      //   直接 await 会让界面停在旧状态好几秒，用户以为没点上。
+      UsageStats.setCfg({ enabled: true, endpoint: url });
+      renderUsageStats();
+      const r = await UsageStats.push({});
+      renderUsageStats();
+      if (r && r.ok) toast('已开启匿名统计，谢谢支持', 'success');
+      else toast('已开启，但上报失败：' + ((r && r.reason) || '网络不通'), 'error');
+    });
+
+    on('btn-usage-disable', 'click', () => {
+      UsageStats.disable();
+      renderUsageStats();
+      toast('已关闭匿名统计，不再发送任何数据', 'success');
+    });
+
+    on('btn-usage-preview', 'click', () => {
+      const box = $('usage-preview');
+      if (!box) return;
+      let p = {};
+      try { p = UsageStats.payload(); } catch (e) { p = { error: String(e) }; }
+      box.innerHTML = '<div class="hint" style="font-size:11.5px">' +
+        '开启后每次启动会 POST 下面这些字段（就这些，没有别的）：</div>' +
+        '<pre style="white-space:pre-wrap;font-size:11.5px;margin-top:6px;padding:8px;' +
+        'background:rgba(127,127,127,.12);border-radius:6px">' +
+        esc(JSON.stringify(p, null, 2)) + '</pre>';
+    });
   }
 
   function renderMemoryList() {
@@ -6811,6 +6887,8 @@ const App = (() => {
     on('set-goal-rows', 'input', updateGoalSum);
 
     // 设置
+    // ★ 匿名使用统计（2026-10-31 补：之前 HTML 有卡片但无任何绑定）
+    bindUsageStats();
     on('btn-set-test', 'click', async () => {
       const cfg = readProviderConfig('set-provider', 'set-model', 'set-model-custom', 'set-baseurl', 'set-key');
       await testProviderConfig(cfg, $('set-status'), $('btn-set-test'));
