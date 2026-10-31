@@ -174,12 +174,16 @@ const GaokaoBar = (() => {
           const full = ps.maxScore || 150;
           const curRate = ps.score / full;
 
-          // ★ 该科的目标得分率（2026-10-31 修）
-          //   之前用 target/(科目数×满分)，但 target 是 620/750=82.7%，
-          //   导致 101/150(67%) 的数学也显示接近满绿（ratio 0.81），视觉误导。
-          //   现在用：目标总分 ÷ 满分总分，作为统一目标率
-          const fullTotal = subs.length * full;
-          const targetRate = target ? Math.min(0.98, target / fullTotal) : 0.8;
+          // ★ 该科的目标得分率（2026-10-31 修 ②）
+          //   上一版用 target / (科目数 × 该科满分)，但六科满分不同
+          //   （语数英 150、理化生 100），拿单科满分当统一尺子会算错：
+          //   620 / (3 × 150) = 0.0667 → 任何得分率 / 0.0667 都 >1 → 全满格。
+          //   现在按"各科满分之和"算总占比，再当作统一目标率。
+          const fullTotal = subs.reduce((a, s) => {
+            const m = (o.estimate.perSubject[s] && o.estimate.perSubject[s].maxScore) || full;
+            return a + m;
+          }, 0);
+          const targetRate = target ? Math.min(0.98, target / Math.max(1, fullTotal)) : 0.8;
 
           // 该科达标程度：当前得分率 / 目标得分率
           const ratio = Math.max(0, Math.min(1, curRate / Math.max(0.01, targetRate)));

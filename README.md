@@ -1,16 +1,81 @@
-﻿# 学徒 · AI 学习系统
+# 学徒 · AI 学习系统
 
-> 把高考变成一条能看见的进度条。
+> **AI 主动教，不是等你问。把高考变成一条能看见的进度条。**
 
 ![Platform](https://img.shields.io/badge/platform-Windows-blue)
 ![Electron](https://img.shields.io/badge/Electron-33-green)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Stars](https://img.shields.io/github/stars/zhouhengyi123/-xuetu?style=social)
+
+**一个真正会主动找你的高考 AI 家教**——它先了解你，把高考拆成一条能走完的路，
+然后每天告诉你「今天该做什么」。不用你一直问。
+
+![总览](docs/screenshots/01-dashboard.png)
 
 ---
 
-## 一句话
+## 它长什么样
 
-**AI 主动教，不是等你问。** 它先了解你，再把高考拆成一条能走完的路。
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/02-progress.png" alt="进度追踪"><br><sub><b>进度追踪</b> — 每科还差多少数据、离目标多远</sub></td>
+<td width="50%"><img src="docs/screenshots/03-planner.png" alt="学习规划"><br><sub><b>学习规划</b> — 今天该做什么，一眼看完</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/04-weakness.png" alt="薄弱点诊断"><br><sub><b>薄弱点诊断</b> — 从错题里找出真正卡住你的地方</sub></td>
+<td><img src="docs/screenshots/05-settings.png" alt="设置"><br><sub><b>设置</b> — 统计默认关闭，随时可关</sub></td>
+</tr>
+</table>
+
+---
+
+## 为什么不是又一个「AI 刷题软件」
+
+市面上的 AI 学习工具大多是这样：你问它答，你不问它就不动。
+但高考这件事，**最大的问题从来不是「没有题做」，而是「不知道今天该干什么」**。
+
+学徒做法相反：它先花几分钟了解你（目标分、当前分、选科、薄弱点、每天能学多久），
+把 6 科拆成一条进度条，然后**主动**开口——该复习了、这个知识点你还没掌握、
+这周进度落后了、你离目标只差 44 分了。
+
+---
+
+## 快速开始
+
+### 方式一：下载即用（推荐）
+
+去 [Releases](https://github.com/zhouhengyi123/-xuetu/releases/latest) 下载：
+
+| 文件 | 大小 | 说明 |
+|---|---|---|
+| `xuetu-v1.1.0-slim-win64.tar.gz` | 108 MB | **推荐**。核心功能齐全，不含 DeepTutor 深度辅导套装 |
+| `xuetu-v1.1.0-full-win64.tar.gz` | 362 MB | 完整版，含 DeepTutor（需要更多磁盘空间和时间） |
+
+解压后双击里面的 `学徒.exe` 即可，**不用装 Node、不用装 Python**。
+
+> - Windows 自带的解压**不支持** `.tar.gz`，请用 7-Zip / WinRAR / Bandizip
+> - 首次启动会引导你填一份问卷（约 3 分钟），填完就能看到自己的进度条了
+> - 首次还需要配一个大模型接口（软件**不预置任何密钥**）；也可以用 WorkBuddy 免费额度
+
+### 方式二：从源码运行
+
+```bash
+# 需要 Node.js >= 18
+git clone https://github.com/zhouhengyi123/-xuetu.git
+cd xuetu
+node scripts/setup-vendor.cjs    # 首次：下载第三方库（约 16 MB）
+npm install
+npm start
+```
+
+### 打包成 exe
+
+```bash
+node _build_exe.cjs
+```
+
+---
+
 
 ---
 
@@ -135,46 +200,6 @@
 - **事件记忆** —— 做过什么（AI 知道你这几天干了什么）
 
 **离线优先**：Three.js（655 KB）+ MediaPipe（16 MB）全部内嵌，不依赖 CDN。
-
----
-
-## 快速开始
-
-### 下载即用（Windows）
-
-去 [Releases](../../releases) 下载，两个版本任选：
-
-| 版本 | 大小 | 包含什么 | 适合谁 |
-|---|---|---|---|
-| **精简版** | 107 MB | 除深度辅导外的全部功能 | 大多数用户（推荐） |
-| **完整版** | 362 MB | 全部功能，含 DeepTutor 深度辅导 | 想要完整功能的人 |
-
-**安装步骤**
-
-1. 下载 `.tar.gz` 文件
-2. 用 7-Zip / WinRAR 解压（Windows 自带的不支持）
-3. 双击 `学徒.exe`
-
-**首次启动需要填 API Key**（软件不预置任何密钥）。也可以用 WorkBuddy 免费额度。
-
-### 从源码运行
-
-```bash
-git clone <your-repo-url>
-cd 学徒-开源版
-node scripts/setup-vendor.cjs   # 下载第三方库（16 MB，首次需要）
-pnpm install
-pnpm start
-```
-
-### 打包成 exe
-
-```bash
-node _build_exe.cjs
-```
-
----
-
 ## 隐私
 
 **所有学习数据只存在你电脑上**（`%APPDATA%/xuetu-app`）

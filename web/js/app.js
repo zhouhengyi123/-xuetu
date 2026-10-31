@@ -662,7 +662,10 @@ const App = (() => {
       (function(){ var b = $('g-bar'); if (b && b.style) b.style.width = pct + '%'; })();
       ($('g-percent') || {set textContent(v){},set innerHTML(v){}}).textContent = pct.toFixed(2) + '%';
       ($('g-progress-note') || {set textContent(v){},set innerHTML(v){}}).textContent = '起点 ' + base + ' 分 · ' + (est.method === 'ai' ? 'AI 估算' : '本地推算');
-      countTo($('s-gain'), total - base, { decimals: 5, prefix: total - base >= 0 ? '+' : '' });
+      // ★ 展示 1 位小数（2026-10-31 修）
+      //   内部计算仍保留 round5 的 5 位精度，但"累计提分"是给人看的数字，
+      //   之前 decimals:5 会显示成 +11.54161，像 bug。
+      countTo($('s-gain'), total - base, { decimals: 1, prefix: total - base >= 0 ? '+' : '' });
     } else {
       // ★ 数据不够时不编分数：只展示学生真正提供过的那个数字（月考总分）
       countTo($('g-current'), base || NaN, { decimals: 0, fallback: '--' });
