@@ -20,17 +20,32 @@ const http = require('http');
 function findRuntimeRoot() {
   const cands = [];
 
-  // ① 打包版：resources/runtime/deeptutor
-  if (process.resourcesPath) {
+  /**
+   * ★ 2026-10-31 修：打包版只认 resources/ + __dirname，不再用 process.cwd()。
+   *
+   * 原来的第 ④ 号候选是 process.cwd()/runtime/deeptutor —— 这是个隐患：
+   *   · 用户从任意目录启动 exe（比如 D:\），就会去捡 D:\runtime\deeptutor
+   *   · 如果那个目录碰巧残缺/是别人的，就会以错误配置启动
+   *   · 实测表现：slim 版（不含 runtime）本该「跳过」，却因为
+   *     cwd 恰好指向一个含 runtime 的目录而硬启动，然后 bridge 报错退出
+   *
+   * 打包后运行时只可能在 resources/ 下；开发模式下 __dirname 就是项目根。
+   * cwd 不该参与判断。
+   */
+  const isPackaged = !!process.resourcesPath &&
+    !String(process.resourcesPath).includes('node_modules');
+
+  if (isPackaged) {
+    // ① 打包版：resources/runtime/deeptutor（electron-builder extraResources）
     cands.push(path.join(process.resourcesPath, 'runtime', 'deeptutor'));
     cands.push(path.join(process.resourcesPath, 'deeptutor'));
+    // ② 脚本在 resources/ 根下时，同级找
+    cands.push(path.join(__dirname, 'runtime', 'deeptutor'));
+  } else {
+    // 开发版：项目根/runtime/deeptutor（__dirname 就是项目根）
+    cands.push(path.join(__dirname, 'runtime', 'deeptutor'));
+    cands.push(path.join(__dirname, '..', 'runtime', 'deeptutor'));
   }
-  // ② 开发版：项目根/runtime/deeptutor
-  cands.push(path.join(__dirname, 'runtime', 'deeptutor'));
-  // ③ 脚本本身在 resources/ 时，同级找 runtime
-  cands.push(path.join(__dirname, '..', 'runtime', 'deeptutor'));
-  // ④ app.asar 内的 __dirname（兜底）
-  cands.push(path.join(process.cwd(), 'runtime', 'deeptutor'));
 
   for (const c of cands) {
     if (!c) continue;
@@ -152,19 +167,45 @@ async function startBridge() {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: childEnv,
     });
+    // 收集 stderr 全文，供 exit 时判断是否属「预期内不可用」
+    let bridgeErrText = '';
     child.stdout.on('data', d => {
       const s = d.toString().trim();
       if (s && !s.includes('══')) log('[bridge] ' + s.split('\n')[0]);
     });
     child.stderr.on('data', d => {
-      const s = d.toString().trim();
-      if (s) log('[bridge:err] ' + s.split('\n')[0].slice(0, 300));
+      const s = d.toString();
+      bridgeErrText += s;
+      const first = s.trim().split('\n')[0];
+      // MODULE_NOT_FOUND 的堆栈是已知情况，不逐行刷屏（exit 里会统一说明）
+      if (first && !/Cannot find module 'electron'/.test(s)) {
+        log('[bridge:err] ' + first.slice(0, 300));
+      }
     });
     child.on('error', (e) => {
       log('[bridge:spawn失败] ' + e.message);
     });
     child.on('exit', (c) => {
-      if (c !== 0) log('[bridge] 退出 code=' + c);
+      /**
+       * ★ 2026-10-31：区分「预期内不可用」和真错误。
+       *
+       * 已知限制：workbuddy-bridge.cjs 用**纯 node.exe** 跑（不能用 Electron，
+       * 否则模块解析带上 asar 补丁会崩），但它 require 的 electron-workbuddy.js
+       * 顶部有 require('electron') 拿 ipcMain —— 纯 node 下必然 MODULE_NOT_FOUND。
+       *
+       * 影响范围很小：
+       *   · 主程序的 WorkBuddy（设置页「用 WorkBuddy 跳过填 Key」）走 **IPC**，不依赖此桥
+       *   · 前端没有任何地方引用 8790 端口
+       *   · 此桥只为 DeepTutor 后端提供 HTTP 形式的 WorkBuddy 能力
+       * 所以这里降级为一行说明，不再刷 err 堆栈吓用户。
+       */
+      if (c !== 0) {
+        if (bridgeErrText.includes("Cannot find module 'electron'")) {
+          log('[bridge] 跳过（纯 node 环境无 electron 模块，属预期；主程序 WorkBuddy 走 IPC 不受影响）');
+        } else {
+          log('[bridge] 退出 code=' + c);
+        }
+      }
       state.bridge = false;
     });
     state.children.push(child);
@@ -294,6 +335,29 @@ async function startFrontend() {
 // ── 对外接口 ──
 async function ensureAll() {
   if (state.bridge && state.backend && state.frontend) return state;
+
+  /**
+   * ★ 2026-10-31 修：没有运行时就直接返回，不要硬启动。
+   *
+   * 之前精简版（slim，不含 runtime/deeptutor）启动时会一路
+   *   「启动 DeepTutor 全套…」→ bridge 报 Cannot find module → 退出 code=1
+   * 控制台一片红，用户以为软件坏了。
+   *
+   * DeepTutor 深度辅导是**可选**附加能力（在辅导卡片里点才用），
+   * 不是主界面依赖。没有运行时 = 这个功能不可用，主程序完全正常，
+   * 所以这里应该安静跳过。
+   */
+  if (!RT) {
+    log('未检测到 DeepTutor 运行时（精简版不含此组件），跳过。');
+    return {
+      runtime: null,
+      bridge: false,
+      backend: false,
+      frontend: false,
+      skipped: true,
+      errors: [],
+    };
+  }
 
   log('启动 DeepTutor 全套…');
   log('运行时: ' + (RT || '(未找到)'));

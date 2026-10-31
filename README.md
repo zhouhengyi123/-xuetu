@@ -42,20 +42,23 @@
 
 ## 快速开始
 
-### 方式一：下载即用（推荐）
+### 方式一：下载安装包，双击安装（推荐）
 
-去 [Releases](https://github.com/zhouhengyi123/-xuetu/releases/latest) 下载：
+去 [**Releases**](https://github.com/zhouhengyi123/-xuetu/releases/latest) 下载安装包：
 
 | 文件 | 大小 | 说明 |
 |---|---|---|
-| `xuetu-v1.1.0-slim-win64.tar.gz` | 108 MB | **推荐**。核心功能齐全，不含 DeepTutor 深度辅导套装 |
-| `xuetu-v1.1.0-full-win64.tar.gz` | 362 MB | 完整版，含 DeepTutor（需要更多磁盘空间和时间） |
+| **`xuetu-slim-setup-1.1.0.exe`** | 84 MB | **推荐**。核心功能齐全，不含 DeepTutor 深度辅导 |
+| `xuetu-full-setup-1.1.0.exe` | 284 MB | 完整版，含 DeepTutor（额外约 700 MB 磁盘，安装较慢） |
 
-解压后双击里面的 `学徒.exe` 即可，**不用装 Node、不用装 Python**。
+**双击 → 下一步 → 完成**，桌面上会出现「学徒 · AI 学习系统」图标。
 
-> - Windows 自带的解压**不支持** `.tar.gz`，请用 7-Zip / WinRAR / Bandizip
-> - 首次启动会引导你填一份问卷（约 3 分钟），填完就能看到自己的进度条了
-> - 首次还需要配一个大模型接口（软件**不预置任何密钥**）；也可以用 WorkBuddy 免费额度
+> - 装到用户目录，**不需要管理员权限**
+> - 卸载时**不会删除你的学习数据**（存档留在 `%APPDATA%\xuetu-app`）
+> - 不用装 Node、不用装 Python，全部自带
+> - 首次启动会引导你填一份问卷（约 3 分钟），填完就能看到自己的进度条
+> - 首次还需要配一个大模型接口（软件**不预置任何密钥**）；也可以用 WorkBuddy 免费额度，基本不花钱
+> - 安装包未做代码签名，Windows 可能提示「未知发布者」，点「更多信息 → 仍要运行」即可
 
 ### 方式二：从源码运行
 
@@ -68,10 +71,15 @@ npm install
 npm start
 ```
 
-### 打包成 exe
+### 打包成安装包
 
 ```bash
+# 便携版（免安装，解压即用）
 node _build_exe.cjs
+
+# NSIS 安装包（见 docs/构建安装包.md）
+npm i -D electron-builder
+npx electron-builder --win nsis --x64
 ```
 
 ---
