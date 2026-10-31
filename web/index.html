@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学徒 · AI 学习系统</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f1115'/%3E%3Ctext x='16' y='22' font-size='17' font-family='sans-serif' font-weight='700' fill='%23fff' text-anchor='middle'%3E%E5%AD%A6%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css?v=64">
+<link rel="stylesheet" href="css/polish.css?v=64">
+<link rel="stylesheet" href="css/course.css?v=64">
+</head>
+<body>
+
+<!-- 环境光层：给毛玻璃提供可透的内容（fixed，滚动时相对运动，玻璃感才出来） -->
+<div id="ambient" aria-hidden="true"></div>
+
+<div id="app" class="hidden">
+
+  <!-- ══════════ 左侧：程序列表 ══════════ -->
+  <aside id="sidebar">
+    <div class="sidebar-head">
+      <div class="brand">
+        <div class="brand-mark">学</div>
+        <div class="brand-name">学徒</div>
+        <div class="brand-tag">AI</div>
+      </div>
+    </div>
+
+    <div class="sidebar-actions">
+      <button class="new-session" id="btn-new-session">
+        <span class="plus">＋</span><span>新的辅导</span>
+      </button>
+    </div>
+
+    <div class="sidebar-body">
+      <div class="nav-indicator" id="nav-indicator" aria-hidden="true"></div>
+      <div class="nav-group">
+        <div class="nav-group-title">学习</div>
+        <a class="nav-item active" data-page="dashboard"><span class="nav-icon">◫</span><span class="nav-label">总览</span></a>
+        <a class="nav-item" data-page="course"><span class="nav-icon">▤</span><span class="nav-label">生成课程</span></a>
+        <a class="nav-item" data-page="planner"><span class="nav-icon">☑</span><span class="nav-label">学习规划</span></a>
+        <a class="nav-item" data-page="quiz"><span class="nav-icon">✎</span><span class="nav-label">AI 出卷</span><span class="nav-badge hidden" id="badge-quiz">0</span></a>
+        <a class="nav-item" data-page="chat"><span class="nav-icon">◍</span><span class="nav-label">AI 辅导</span></a>
+        <a class="nav-item" data-page="photo"><span class="nav-icon">▣</span><span class="nav-label">拍照读题</span></a>
+        <a class="nav-item" data-page="camera"><span class="nav-icon">◉</span><span class="nav-label">学习监控</span></a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-title">分析</div>
+        <a class="nav-item" data-page="progress"><span class="nav-icon">◪</span><span class="nav-label">进度追踪</span></a>
+        <a class="nav-item" data-page="weakness"><span class="nav-icon">⚠</span><span class="nav-label">薄弱点</span><span class="nav-badge warn hidden" id="badge-weakness">0</span></a>
+        <a class="nav-item" data-page="import"><span class="nav-icon">↥</span><span class="nav-label">导入试卷</span><span class="nav-badge hidden" id="badge-import">0</span></a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-title">系统</div>
+        <a class="nav-item" data-page="settings"><span class="nav-icon">⚙</span><span class="nav-label">设置</span></a>
+      </div>
+    </div>
+
+    <div class="sidebar-foot">
+      <div class="user-chip" data-page="settings">
+        <div class="user-avatar" id="side-avatar">生</div>
+        <div class="user-meta">
+          <div class="user-name" id="side-name">未设置</div>
+          <div class="user-sub" id="side-sub">点击完成学习问卷</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══════════ 右侧：当前程序界面 ══════════ -->
+  <button id="sidebar-backdrop" type="button" aria-label="关闭导航菜单" tabindex="-1"></button>
+  <main id="main">
+    <header id="topbar">
+      <div class="topbar-left">
+        <button class="icon-btn" id="menu-btn" aria-label="打开导航菜单" aria-controls="sidebar" aria-expanded="false">☰</button>
+        <h1 id="page-title">总览</h1>
+        <span id="page-sub"></span>
+      </div>
+      <div class="topbar-right">
+        <span class="chip" id="model-chip">未配置模型</span>
+        <span class="chip" id="streak">🔥 0 天</span>
+      </div>
+    </header>
+
+    <div id="content">
+
+      <!-- ═══ 总览 ═══ -->
+      <section class="page active" id="page-dashboard">
+        <div class="card hidden" id="backup-warn" style="border-color:var(--amber)"></div>
+        <div class="card">
+          <!-- ★ 主动消息条（2026-10-31）：AI 主动找你，而不是等你问 -->
+        <div id="proactive-banner" class="hidden" style="margin-bottom:16px;padding:14px 16px;
+          background:linear-gradient(135deg,rgba(41,151,255,.08),rgba(110,90,239,.06));
+          border:1px solid rgba(41,151,255,.25);border-radius:12px;
+          display:flex;align-items:flex-start;gap:12px">
+          <div id="pb-icon" style="font-size:20px;line-height:1.3">👋</div>
+          <div style="flex:1;min-width:0">
+            <div id="pb-title" style="font-size:13.5px;font-weight:600;margin-bottom:3px"></div>
+            <div id="pb-body" style="font-size:12.5px;color:var(--label-secondary);line-height:1.65"></div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn btn-primary btn-sm" id="pb-action" style="font-size:12px;padding:4px 12px"></button>
+            <button class="btn btn-ghost btn-sm" id="pb-close" style="font-size:16px;padding:2px 8px;color:var(--label-tertiary)">×</button>
+          </div>
+        </div>
+
+          <!-- ★ 高考游戏化进度条（2026-10-31） -->
+      <div id="gaokao-bar-container"></div>
+      <!-- 隐藏的旧字段（app.js 仍会写，防止 null 报错） -->
+      <div style="display:none">
+        <span id="g-current"></span><span id="dash-label"></span>
+        <span id="g-target"></span><span id="g-gap"></span>
+        <span id="g-days"></span>
+      </div>
+          <div class="progress-info" style="display:none"><span id="g-percent">0%</span><span id="g-progress-note"></span></div>
+        </div>
+
+        <div id="dash-unlock"></div>
+
+        <div class="card">
+          <div class="card-header"><h3>学习统计</h3><span class="card-sub" id="today-date"></span></div>
+          <div class="stats-grid">
+            <div class="stat-item"><div class="stat-value" id="s-weekly">0h</div><div class="stat-label">本周学习</div></div>
+            <div class="stat-item"><div class="stat-value" id="s-quiz">0</div><div class="stat-label">本月试卷</div></div>
+            <div class="stat-item"><div class="stat-value" id="s-gain">+0.00000</div><div class="stat-label">累计提分</div></div>
+            <div class="stat-item"><div class="stat-value" id="s-points">0</div><div class="stat-label">积分</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>今日任务</h3>
+            <div class="card-actions">
+              <button class="btn btn-sm btn-secondary" data-goto="planner">去规划</button>
+            </div>
+          </div>
+          <div id="today-tasks"></div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <h3>AI 每日简报</h3>
+              <button class="btn btn-sm btn-secondary" id="btn-daily-report">生成</button>
+            </div>
+            <div id="daily-report"><div class="empty" style="padding:20px">让 AI 看一眼你这两天的学习情况</div></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>最近活动</h3></div>
+            <div id="recent-activity"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ 生成课程（可视化课程） ═══ -->
+      <section class="page" id="page-course">
+        <!-- 建课：输入想学什么 -->
+        <div class="card" id="course-create-card">
+          <div class="card-header">
+            <h3>生成课程</h3>
+            <span class="card-sub" id="course-model-chip"></span>
+          </div>
+          <p class="card-desc">告诉 AI 你想学什么，它会先给你一份<b>课程目录</b>；你确认后再一节一节生成内容（像 PPT 一样分页讲解，随时可以打断提问）。</p>
+          <div class="cv-request-row">
+            <input type="text" id="course-request" class="cv-request-input"
+              placeholder="例如：三角函数的图像变换 / 化学平衡移动 / 完形填空怎么提高 / 这道题的思路">
+            <button class="btn btn-primary" id="btn-course-create">生成课程</button>
+          </div>
+          <div class="cv-request-opts">
+            <label>科目
+              <select id="course-subject"><option value="">自动判断</option></select>
+            </label>
+            <label>我的水平
+              <select id="course-level">
+                <option value="">默认</option>
+                <option value="基础很薄弱，需要从头讲">基础薄弱</option>
+                <option value="中等，能跟上学校进度">中等</option>
+                <option value="较好，想要拔高和压轴题">较好</option>
+              </select>
+            </label>
+            <label class="cv-check"><input type="checkbox" id="course-use-weak" checked> 参考我的薄弱点</label>
+          </div>
+        </div>
+
+        <!-- 课程内容区（列表 / 目录 / 学习界面，由 JS 切换） -->
+        <div id="course-area"></div>
+      </section>
+
+      <!-- ═══ 学习规划 ═══ -->
+      <section class="page" id="page-planner">
+        <div class="card">
+          <div class="card-header"><h3>规划设置</h3></div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>每日学习时间</label>
+              <select id="p-hours">
+                <option value="1">1 小时</option><option value="2">2 小时</option>
+                <option value="3" selected>3 小时</option><option value="4">4 小时</option>
+                <option value="5">5 小时</option><option value="6">6 小时</option>
+                <option value="8">8 小时</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>侧重科目</label>
+              <select id="p-subject"><option value="auto" selected>自动（按薄弱点）</option></select>
+            </div>
+            <div class="form-group">
+              <label>强度</label>
+              <select id="p-intensity">
+                <option value="easy">轻松</option>
+                <option value="normal" selected>正常</option>
+                <option value="hard">高强度</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="btn-gen-plan">AI 生成今日计划</button>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>今日计划</h3><span class="card-sub" id="plan-time"></span></div>
+          <div id="daily-plan"></div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header"><h3>本周节奏</h3></div>
+            <div id="weekly-plan"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>AI 建议</h3></div>
+            <div id="plan-tips"><div class="empty" style="padding:20px">生成计划后显示 AI 的针对性建议</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ AI 出卷 ═══ -->
+      <section class="page" id="page-quiz">
+        <div class="card">
+          <div class="card-header">
+            <h3>教材进度</h3>
+            <div class="card-actions">
+              <span class="card-sub" id="tb-summary"></span>
+              <button class="btn btn-sm btn-secondary" id="btn-tb-toggle">展开填写</button>
+            </div>
+          </div>
+          <p class="card-desc">告诉 AI 每科教到哪了，出题就卡在这个范围内，不会拿还没学的章节考你。</p>
+          <div id="tb-editor" class="hidden"></div>
+          <div class="btn-group hidden" id="tb-save-bar" style="margin-top:12px">
+            <button class="btn btn-primary btn-sm" id="btn-tb-save">保存教材进度</button>
+          </div>
+        </div>
+
+        <div class="card no-print">
+          <div class="card-header"><h3>出卷设置</h3></div>
+          <div class="form-row">
+            <div class="form-group"><label>科目</label><select id="q-subject"></select></div>
+            <div class="form-group"><label>知识点</label><select id="q-knowledge"><option value="">全部</option></select></div>
+            <div class="form-group">
+              <label>难度</label>
+              <select id="q-difficulty">
+                <option value="easy">基础</option><option value="normal" selected>中等</option>
+                <option value="hard">较难</option><option value="mixed">混合</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>题型</label>
+              <select id="q-type">
+                <option value="mixed" selected>混合</option><option value="choice">选择题</option>
+                <option value="fill">填空题</option><option value="answer">解答题</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>题数</label>
+              <select id="q-count"><option>5</option><option selected>10</option><option>15</option><option>20</option></select>
+            </div>
+            <div class="form-group">
+              <label>限时</label>
+              <select id="q-time"><option value="0">不限</option><option>10</option><option selected>15</option><option>30</option><option>60</option></select>
+            </div>
+            <div class="form-group">
+              <label>范围</label>
+              <div class="checkbox-group">
+                <label><input type="checkbox" id="q-only-covered" checked> 只出已学过的</label>
+              </div>
+            </div>
+          </div>
+          <div class="hint" id="q-textbook-note" style="margin-bottom:14px"></div>
+          <div class="btn-group">
+            <button class="btn btn-primary" id="btn-gen-quiz">生成试卷并开始</button>
+            <button class="btn btn-secondary" id="btn-print-quiz">打印试卷</button>
+          </div>
+        </div>
+
+        <div id="quiz-area" class="hidden">
+          <div class="card">
+            <div class="card-header">
+              <h3 id="quiz-title">试卷</h3>
+              <span class="timer" id="quiz-timer"></span>
+            </div>
+            <div id="quiz-questions"></div>
+            <div class="btn-group no-print" style="margin-top:18px">
+              <button class="btn btn-primary" id="btn-submit-quiz">提交答案</button>
+              <button class="btn btn-secondary" id="btn-quit-quiz">放弃</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="quiz-result" class="hidden"></div>
+
+        <div class="card no-print">
+          <div class="card-header"><h3>历史试卷</h3></div>
+          <div id="quiz-history"></div>
+        </div>
+      </section>
+
+      <!-- ═══ AI 辅导 ═══ -->
+      <section class="page" id="page-chat">
+        <!-- ★ 模式切换（2026-10-24）：三种模式并存，不互相取代 -->
+        <div class="card" style="padding:12px 16px;margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:600;color:var(--label-secondary)">辅导模式</span>
+            <div style="display:flex;gap:6px;background:rgba(15,23,42,.05);padding:3px;border-radius:9px">
+              <button class="btn btn-sm" id="btn-mode-tutorhub"
+                style="height:28px;border:none;background:#fff;box-shadow:var(--shadow-xs);font-weight:600">
+                智能辅导
+              </button>
+              <button class="btn btn-sm" id="btn-mode-quick"
+                style="height:28px;border:none;background:#fff;box-shadow:var(--shadow-xs);font-weight:600">
+                快速问答
+              </button>
+              <button class="btn btn-sm" id="btn-mode-agent"
+                style="height:28px;border:none;background:transparent;color:var(--label-secondary)">
+                Agent 家教
+              </button>
+              <button class="btn btn-sm" id="btn-mode-deep"
+                style="height:28px;border:none;background:transparent;color:var(--label-secondary)">
+                深度辅导
+              </button>
+            </div>
+            <span class="hint" id="chat-mode-hint" style="margin-left:auto;font-size:11.5px">
+              快速问答：直接问马上答 · Agent：能调本机工具 · 深度辅导：讲-例-练-测
+            </span>
+          </div>
+        </div>
+
+        <!-- ── 统一辅导入口（2026-10-31 新增，默认视图）── -->
+        <div id="chat-tutorhub">
+          <div class="card">
+            <div class="card-header">
+              <h3>AI 家教</h3>
+              <span class="card-sub">告诉我你要什么，我来选怎么教</span>
+            </div>
+            <div id="tutorhub-body"></div>
+          </div>
+        </div>
+
+        <!-- ── 模式 C：Agent 家教（2026-10-24 新增）── -->
+        <div id="chat-agent" class="hidden">
+          <div class="card">
+            <div class="card-header">
+              <h3>Agent 家教</h3>
+              <span class="card-sub">能调用本机工具帮你做事</span>
+            </div>
+            <div id="agent-body"></div>
+          </div>
+        </div>
+
+        <!-- ── 模式 A：快速问答（原有，保持不变）── -->
+        <div id="chat-quick">
+          <div class="card chat-card">
+            <div class="card-header">
+              <h3>AI 辅导老师</h3>
+              <div class="card-actions">
+                <span class="card-sub" id="chat-memory-count">记忆 0 条</span>
+                <button class="btn btn-sm btn-ghost" id="btn-chat-clear">清空对话</button>
+              </div>
+            </div>
+            <div class="chat-messages" id="chat-messages"></div>
+            <div class="chat-toolbar" id="chat-toolbar" style="display:flex;gap:8px;align-items:center;padding:8px 0;flex-wrap:wrap">
+              <select id="chat-model" style="min-height:34px;font-size:13px;min-width:180px;border-radius:8px;border:1px solid var(--border-l1);padding:0 8px">
+                <option value="">跟随设置</option>
+              </select>
+              <span class="wb-pool-line" id="chat-pool" style="margin:0"></span>
+            </div>
+            <div class="chat-input-area">
+              <textarea id="chat-input" rows="1" placeholder="问问题，或者贴一道不会的题…（Enter 发送，Shift+Enter 换行）"></textarea>
+              <button class="btn btn-primary" id="btn-chat-send">发送</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── 模式 B：深度辅导（DeepTutor 原生集成，2026-10-24 重写）── -->
+        <div id="chat-deep" class="hidden">
+          <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;height:calc(100vh - 300px);min-height:480px">
+            <div class="card-header" style="padding:14px 18px;margin:0;border-bottom:1px solid var(--border-l1);flex-shrink:0">
+              <h3 style="margin:0">深度辅导</h3>
+              <div class="card-actions">
+                <span class="card-sub" id="deep-status">未连接</span>
+                <button class="btn btn-sm btn-ghost" id="btn-deep-new">新对话</button>
+                <button class="btn btn-sm btn-ghost" id="btn-deep-retry">重连</button>
+              </div>
+            </div>
+
+            <!-- 消息区 -->
+            <div id="deep-messages" style="flex:1;overflow-y:auto;padding:18px 20px">
+              <div id="deep-welcome" style="max-width:560px;margin:40px auto;text-align:center">
+                <div style="font-size:15px;font-weight:600;margin-bottom:8px">深度辅导</div>
+                <div style="font-size:13px;color:var(--label-secondary);line-height:1.8">
+                  比快速问答更深入：它会先想一遍，再分步骤讲清楚。<br>
+                  适合啃难题、理思路、补习薄弱点。
+                </div>
+                <div style="margin-top:20px;display:flex;flex-direction:column;gap:8px;text-align:left">
+                  <button class="btn btn-sm btn-secondary deep-suggest" data-q="帮我梳理一下导数这一章的知识框架，从定义到应用">梳理导数知识框架</button>
+                  <button class="btn btn-sm btn-secondary deep-suggest" data-q="我的解析几何总是做错，能帮我分析一下常见陷阱吗">解析几何常见陷阱</button>
+                  <button class="btn btn-sm btn-secondary deep-suggest" data-q="物理的动量守恒和能量守恒怎么区分使用场景">动量 vs 能量守恒</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 输入区 -->
+            <div style="flex-shrink:0;padding:14px 18px;border-top:1px solid var(--border-l1);background:var(--bg-layer-2)">
+              <div style="display:flex;gap:10px;align-items:flex-end">
+                <textarea id="deep-input" rows="1" placeholder="问它一个需要深入思考的问题…"
+                  style="flex:1;min-height:44px;max-height:140px;resize:none"></textarea>
+                <button class="btn btn-primary" id="btn-deep-send" style="height:44px">发送</button>
+              </div>
+              <div id="deep-stage" class="hint" style="margin-top:8px;min-height:16px;font-size:11.5px"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ 拍照读题 ═══ -->
+      <section class="page" id="page-photo">
+        <div class="card">
+          <div class="card-header">
+            <h3>拍照读题</h3>
+            <span class="card-sub" id="photo-model-chip">读图模型：--</span>
+          </div>
+          <p class="card-desc">手机拍一张 → 传到电脑 → 拖进来。AI 会把题目抄出来、判对错、标知识点，还能讲题和出同类题。</p>
+
+          <div class="photo-drop" id="photo-drop">
+            <div class="photo-drop-icon">▣</div>
+            <div class="photo-drop-title">把照片拖到这里</div>
+            <div class="photo-drop-sub">
+              或者 <label class="photo-link">点击选择文件<input type="file" id="photo-files" accept="image/*" multiple hidden></label>
+              · 也可以直接 <kbd>Ctrl</kbd>+<kbd>V</kbd> 粘贴截图
+            </div>
+          </div>
+          <div class="preview-grid" id="photo-preview"></div>
+
+          <div class="form-row" style="margin-top:16px">
+            <div class="form-group">
+              <label>科目</label>
+              <select id="photo-subject"><option value="">自动判断</option></select>
+            </div>
+            <div class="form-group">
+              <label>这是</label>
+              <select id="photo-kind">
+                <option value="homework">作业 / 练习</option>
+                <option value="exam">考试卷</option>
+                <option value="single">单道不会的题</option>
+              </select>
+            </div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" id="btn-photo-analyze">AI 读题并批改</button>
+            <button class="btn btn-secondary" id="btn-photo-clear">清空</button>
+          </div>
+          <div id="photo-status" class="hint"></div>
+        </div>
+
+        <div id="photo-result"></div>
+      </section>
+
+      <!-- ═══ 学习监控 ═══ -->
+      <section class="page" id="page-camera">
+        <div class="card">
+          <div class="card-header"><h3>学习状态监控</h3><span class="card-sub" id="cam-status">未启动</span></div>
+          <div class="camera-layout">
+            <div class="camera-preview">
+              <video id="camera-video" autoplay playsinline muted></video>
+              <div id="camera-placeholder" class="camera-placeholder">
+                <div class="placeholder-icon">◉</div>
+                <p>点下方「启动监控」开始</p>
+                <p style="font-size:11.5px">画面只在本地处理，不会上传</p>
+              </div>
+            </div>
+            <div class="camera-sidebar">
+              <div class="camera-controls">
+                <button class="btn btn-primary" id="btn-cam-start">启动监控</button>
+                <button class="btn btn-secondary" id="btn-cam-calibrate" disabled>校准我的坐姿</button>
+                <button class="btn btn-secondary" id="btn-cam-stop">停止</button>
+              </div>
+              <div class="camera-stats">
+                <div class="stat-item"><span class="stat-label">当前状态</span><span class="stat-value" id="cam-state">--</span></div>
+                <div class="stat-item"><span class="stat-label">注意力</span><span class="stat-value" id="cam-attention">--</span></div>
+                <div class="stat-item"><span class="stat-label">学习时长</span><span class="stat-value" id="cam-time">0 分 00 秒</span></div>
+                <div class="stat-item"><span class="stat-label">专注率</span><span class="stat-value" id="cam-distract">--</span></div>
+              </div>
+              <div class="hint" style="margin-top:8px;font-size:11.5px;line-height:1.6">
+                会区分<b>书写 / 阅读 / 听讲 / 思考 / 分心</b>——不只是抓你走神。
+                首次使用建议点「校准我的坐姿」：它会分别记下你正常学习和写字时的姿势（各 4 秒）。
+              </div>
+            </div>
+          </div>
+          <div class="camera-log" id="camera-log"></div>
+        </div>
+      </section>
+
+      <!-- ═══ 进度追踪 ═══ -->
+      <section class="page" id="page-progress">
+        <div id="progress-lock"></div>
+
+        <!-- ═══ ★ 就绪度面板：什么时候可以估分（2026-10-18 新增）═══ -->
+        <div class="card" id="readiness-card">
+          <div class="card-header">
+            <h3>还要多少数据才能估分</h3>
+            <span class="card-sub" id="ready-sub"></span>
+          </div>
+          <p class="card-desc">
+            估分不是拍脑袋 —— 系统要先攒够证据（卷子、练习、上课表现），
+            <b>置信度够了才敢给数</b>。下面是每科进展到什么程度。
+          </p>
+
+          <div id="readiness-overall" style="margin-bottom:18px"></div>
+          <div id="readiness-rows"></div>
+          <div class="hint" id="readiness-advice" style="margin-top:12px"></div>
+        </div>
+
+        <!-- ═══ ★ 能力测验（2026-10-18 新增）═══ -->
+        <div class="card" id="aptitude-card">
+          <div class="card-header">
+            <h3>推理能力测验</h3>
+            <span class="card-sub" id="aptitude-sub">可选 · 5 分钟</span>
+          </div>
+          <p class="card-desc">
+            12 道图形推理题。<b>不是考试</b>，也不影响任何记录 —— 它只是帮系统判断你的推理特点（数理型 / 语言型），
+            让估分更贴近你本人，而不是套一个平均值。
+          </p>
+          <div id="aptitude-body"></div>
+        </div>
+
+<div id="progress-body">
+          <div class="card">
+            <div class="card-header">
+              <h3>高考成绩预估</h3>
+              <div class="card-actions">
+                <button class="btn btn-sm btn-secondary" id="btn-judge-diff">AI 复核题目难度</button>
+                <button class="btn btn-sm btn-secondary" id="btn-ai-estimate">AI 重新估算</button>
+              </div>
+            </div>
+            <div class="hint" id="judge-diff-status"></div>
+            <div class="two-big">
+              <div class="big-stat now">
+                <div class="big-label">① 现在的高考分数</div>
+                <div class="big-value" id="e-total">--</div>
+                <div class="big-sub" id="e-now-sub">只由已有卷子的真实作答推算</div>
+              </div>
+              <div class="big-stat future">
+                <div class="big-label">② 预测高考分数</div>
+                <div class="big-value" id="e-future">--</div>
+                <div class="big-sub" id="e-future-sub">按当前节奏推算到高考</div>
+              </div>
+            </div>
+            <div class="estimate-grid" style="margin-top:14px">
+              <div class="estimate-item"><div class="estimate-value" id="e-target">--</div><div class="estimate-label">目标分数</div></div>
+              <div class="estimate-item"><div class="estimate-value" id="e-gain">--</div><div class="estimate-label">预计还能提</div></div>
+              <div class="estimate-item"><div class="estimate-value" id="e-gap">--</div><div class="estimate-label">距目标</div></div>
+              <div class="estimate-item"><div class="estimate-value" id="e-suff">--</div><div class="estimate-label">数据充分度</div></div>
+            </div>
+            <div class="hint" id="e-suff-hint"></div>
+            <div class="hint" id="estimate-assume"></div>
+            <div class="hint" id="total-estimate-note"></div>
+            <div style="margin-top:16px"><div id="subject-estimates"></div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3>估算依据的数据质量</h3>
+              <span class="card-sub" id="quality-sub"></span>
+            </div>
+            <p class="card-desc">这个预估的可信度取决于三件事：<b>难度是不是按真题判的</b>、<b>题目样本够不够</b>、
+              <b>有没有同一套题反复做</b>。下面逐科摊开给你看，弱在哪就补哪。</p>
+            <div id="quality-body"></div>
+            <div class="hint" id="quality-advice" style="margin-top:10px"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3>成绩趋势</h3></div>
+            <canvas id="prog-chart" width="900" height="240"></canvas>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3>预测准确率回溯</h3><span class="card-sub" id="bt-sub">把真实考的分录进来，看预测到底准不准</span></div>
+            <p class="card-desc">这里只放<b>真实考试</b>的成绩（模考、联考、真考），用来和「当时的预测」比对。
+              存了多少对数据，就能算多少 MAE / 偏差 / 区间覆盖率 —— 这是<b>唯一</b>能证明预测准不准的办法。</p>
+            <div id="bt-summary" class="hint" style="margin-bottom:10px"></div>
+            <div class="form-row" style="align-items:flex-end;gap:8px;flex-wrap:wrap">
+              <div class="form-group" style="margin:0">
+                <label>科目（留空 = 总分）</label>
+                <select id="bt-subject" style="min-width:110px"></select>
+              </div>
+              <div class="form-group" style="margin:0">
+                <label>实际得分</label>
+                <input type="number" id="bt-score" placeholder="如 112" style="width:110px">
+              </div>
+              <div class="form-group" style="margin:0">
+                <label>满分（总分填 750）</label>
+                <input type="number" id="bt-full" value="750" style="width:110px">
+              </div>
+              <div class="form-group" style="margin:0">
+                <label>考试日期</label>
+                <input type="date" id="bt-date" style="width:150px">
+              </div>
+              <button class="btn btn-primary btn-sm" id="btn-bt-add">录入真实成绩</button>
+            </div>
+            <div class="hint" id="bt-hint" style="margin-top:8px"></div>
+
+            <!-- ★ 一次考试填六科：不用点六次 -->
+            <details style="margin-top:10px">
+              <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)">一次考试录六科（批量，更快）</summary>
+              <div class="form-row" style="margin-top:8px;align-items:flex-end;gap:8px;flex-wrap:wrap">
+                <div class="form-group" style="margin:0;flex:0 0 150px">
+                  <label>考试日期</label>
+                  <input type="date" id="bt-batch-date" style="width:150px">
+                </div>
+                <button class="btn btn-secondary btn-sm" id="btn-bt-batch">生成六科输入框</button>
+              </div>
+              <div id="bt-batch-rows" style="margin-top:8px"></div>
+            </details>
+
+            <div id="bt-pairs" style="margin-top:12px"></div>
+            <div class="btn-group" style="margin-top:10px">
+              <button class="btn btn-danger btn-sm" id="btn-bt-clear">清空回溯数据</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3>提分记录</h3><span class="card-sub">每次试卷/导入带来的估算变化</span></div>
+            <div id="gain-history"></div>
+          </div>
+        </div>
+
+        <div class="card flush">
+          <div class="card-header"><h3>历次记录</h3><span class="card-sub">这下面全是你真实的成绩，没有估算</span></div>
+          <table class="data-table">
+            <thead><tr><th>日期</th><th>来源</th><th>科目</th><th>得分</th><th>得分率</th></tr></thead>
+            <tbody id="prog-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ═══ 薄弱点 ═══ -->
+      <section class="page" id="page-weakness">
+        <!-- ★ DeepTutor 同步状态（2026-10-24） -->
+        <div class="card" style="padding:0;border:none;background:transparent;box-shadow:none">
+          <div id="weakness-dt-bar"></div>
+        </div>
+
+        <!-- ★ 今日复习（2026-10-24 新增） -->
+        <div class="card" id="review-card">
+          <div class="card-header">
+            <h3>今日复习</h3>
+            <span class="card-sub" id="review-stats">统计中…</span>
+          </div>
+          <p class="card-desc" style="margin-bottom:12px">
+            按间隔复习安排：做对了隔几天再来，连续做对才判定掌握。
+            <b>只看解析不算掌握</b> —— 必须自己做对。
+          </p>
+          <div id="review-due-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>薄弱知识点</h3>
+            <div class="card-actions"><button class="btn btn-sm btn-secondary" id="btn-analyze-weakness">AI 重新分析</button></div>
+          </div>
+          <div id="weakness-list"></div>
+        </div>
+
+        <!-- ★ 错题本（带筛选，2026-10-24） -->
+        <div class="card">
+          <div class="card-header"><h3>错题本</h3><span class="card-sub" id="mistake-count"></span></div>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <select id="mk-filter-subject" class="input" style="max-width:120px;height:32px;font-size:12.5px">
+              <option value="">全部科目</option>
+            </select>
+            <select id="mk-filter-status" class="input" style="max-width:130px;height:32px;font-size:12.5px">
+              <option value="">全部状态</option>
+              <option value="due">待复习</option>
+              <option value="learning">复习中</option>
+              <option value="mastered">已掌握</option>
+              <option value="repeat">反复错</option>
+            </select>
+            <input id="mk-filter-keyword" class="input" placeholder="搜索题目/知识点" style="flex:1;min-width:140px;height:32px;font-size:12.5px">
+            <button class="btn btn-sm btn-secondary" id="btn-mk-filter">筛选</button>
+          </div>
+
+          <div id="mistake-list"></div>
+        </div>
+      </section>
+
+      <!-- ═══ 导入试卷 ═══ -->
+      <section class="page" id="page-import">
+        <div class="card">
+          <div class="card-header">
+            <h3>上传试卷 / 作业</h3>
+            <span class="card-sub">每科满 5 份自动做该科独立分析</span>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>科目</label><select id="up-subject"></select></div>
+            <div class="form-group">
+              <label>类型</label>
+              <select id="up-type">
+                <option value="homework">日常作业</option>
+                <option value="exam">学校考试</option>
+                <option value="mock">模拟考试 / 联考</option>
+                <option value="real">高考真题</option>
+              </select>
+            </div>
+            <div class="form-group"><label>日期</label><input type="date" id="up-date"></div>
+          </div>
+          <div class="upload-area" id="up-drop">
+            <div class="photo-drop-icon">↥</div>
+            <div class="photo-drop-title">把试卷照片（或整个文件夹）拖到这里</div>
+            <div class="photo-drop-sub">
+              或者 <label class="photo-link">点击选择图片<input type="file" id="up-files" accept="image/*" multiple hidden></label>
+              · <label class="photo-link">选择文件夹（批量）<input type="file" id="up-folder" webkitdirectory hidden></label>
+              · 也可以直接 <kbd>Ctrl</kbd>+<kbd>V</kbd> 粘贴
+            </div>
+            <div class="hint" style="margin-top:8px">
+              支持 jpg / png / webp / heic，一次最多 9 张；<strong>拖入文件夹会自动按子文件夹分成多份卷子，逐一识别</strong>；
+              可以分几次拖，不会覆盖之前拖进来的<br>
+              <strong>单份上传会先「定位题目」把每道题框出来，你可以拖动框校准（补漏题、改位置）后再识别</strong>，识别会更准
+            </div>
+            <div id="up-preview" class="preview-grid"></div>
+            <div id="up-file-summary" class="hint" style="margin-top:8px">还没选图片</div>
+          </div>
+          <div class="btn-group" style="margin-top:14px">
+            <button class="btn btn-primary" id="btn-up-analyze">AI 识别并分析</button>
+          </div>
+          <div id="up-analysis"></div>
+        </div>
+
+        <!-- 题目定位：先框题 → 用户拖动校准 → 再识别 -->
+        <div id="box-panel"></div>
+
+        <div id="ann-panel"></div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>各科试卷进度</h3>
+            <div class="card-actions"><button class="btn btn-sm btn-secondary" id="btn-run-subject-analysis">分析已满 5 份的科目</button></div>
+          </div>
+          <div class="paper-progress" id="paper-progress"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>单科分析结果</h3></div>
+          <div id="subject-analysis-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>六科总分预估</h3>
+            <span class="card-sub">六科全部完成单科分析后解锁</span>
+          </div>
+          <div id="total-analysis"></div>
+          <div class="btn-group" style="margin-top:12px">
+            <button class="btn btn-primary" id="btn-total-analysis">生成总分预估</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>手动录入成绩</h3></div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>来源</label>
+              <select id="i-source"><option value="mock">模拟考试 / 联考</option><option value="school">学校考试</option><option value="homework">日常作业</option><option value="real">高考真题</option></select>
+            </div>
+            <div class="form-group"><label>名称</label><input type="text" id="i-name" placeholder="如：三月月考"></div>
+            <div class="form-group"><label>日期</label><input type="date" id="i-date"></div>
+          </div>
+          <div id="i-subjects"></div>
+          <div class="btn-group">
+            <button class="btn btn-secondary btn-sm" id="btn-add-subject">＋ 添加科目</button>
+            <button class="btn btn-primary" id="btn-submit-import">提交</button>
+          </div>
+          <div id="import-result"></div>
+        </div>
+
+        <div class="card flush">
+          <div class="card-header"><h3>导入历史</h3></div>
+          <table class="data-table">
+            <thead><tr><th>日期</th><th>名称</th><th>来源</th><th>科目数</th><th>总分</th><th></th></tr></thead>
+            <tbody id="import-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ═══ 设置 ═══ -->
+      <section class="page" id="page-settings">
+        <!-- ★ WorkBuddy 免费 Token（自用测试） -->
+        <div class="card hidden" id="wb-card" style="border-color:var(--amber)">
+          <div class="card-header">
+            <h3>使用 WorkBuddy Token（免费，自用测试）</h3>
+            <span class="card-sub" id="wb-state">检测中…</span>
+          </div>
+          <p class="card-desc">
+            直接复用本机 <b>WorkBuddy 桌面 App</b> 已登录账号的积分，不消耗你自己的 Token ——
+            适合测试阶段省钱。开了之后，所有 AI 调用都走 WorkBuddy。
+          </p>
+          <div class="hint" style="margin-bottom:10px">
+            ⚠️ 这是<b>非官方</b>能力，靠 WorkBuddy App 的本地登录态工作。平台改接口或风控时可能失效；
+            只建议个人测试用，别把它当成稳定依赖。
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary btn-sm" id="btn-wb-enable">启用 WorkBuddy</button>
+            <button class="btn btn-secondary btn-sm" id="btn-wb-check">检测账号</button>
+            <button class="btn btn-secondary btn-sm" id="btn-wb-test">测试一次对话</button>
+            <button class="btn btn-danger btn-sm" id="btn-wb-disable">关闭（改回自己的 Key）</button>
+          </div>
+          <div id="wb-accounts" style="margin-top:10px"></div>
+          <div class="hint" id="wb-hint" style="margin-top:8px"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>大模型接口</h3><span class="card-sub" id="set-model-info"></span></div>
+          <div class="form-row">
+            <div class="form-group"><label>供应商</label><select id="set-provider"></select></div>
+            <div class="form-group"><label>模型</label><select id="set-model"></select></div>
+          </div>
+          <div class="form-group hidden" id="set-model-custom-group">
+            <label>模型名称</label>
+            <input type="text" id="set-model-custom" placeholder="如：my-model">
+          </div>
+          <div class="form-group hidden" id="set-baseurl-group">
+            <label>API 地址（自定义供应商）</label>
+            <input type="text" id="set-baseurl" placeholder="https://api.example.com/v1">
+          </div>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" id="set-key" placeholder="sk-...">
+            <div class="hint">每个供应商的 Key 单独保存，切换时不用重填</div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-secondary" id="btn-set-test">测试连接</button>
+            <button class="btn btn-primary" id="btn-set-save">保存</button>
+          </div>
+          <div id="set-status" class="hint"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>读图模型</h3>
+            <span class="card-sub" id="set-vision-info"></span>
+          </div>
+          <p class="card-desc">「拍照读题」用它识别图片。可以和上面的主模型不同——主模型不带图片能力也能正常读图。</p>
+          <div class="form-row">
+            <div class="form-group"><label>供应商</label><select id="set-vision-provider"></select></div>
+            <div class="form-group"><label>模型（只列支持读图的）</label><select id="set-vision-model"></select></div>
+          </div>
+          <div class="form-group hidden" id="set-vision-model-custom-group">
+            <label>模型名称</label>
+            <input type="text" id="set-vision-model-custom" placeholder="如：my-vl-model">
+          </div>
+          <div class="form-group hidden" id="set-vision-baseurl-group">
+            <label>API 地址</label>
+            <input type="text" id="set-vision-baseurl" placeholder="https://api.example.com/v1">
+          </div>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" id="set-vision-key" placeholder="留空则复用上面主模型同供应商的 Key">
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-secondary" id="btn-set-vision-test">测试读图</button>
+            <button class="btn btn-primary" id="btn-set-vision-save">保存</button>
+          </div>
+          <div id="set-vision-status" class="hint"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>语音（老师的声音）</h3>
+            <span class="card-sub" id="set-tts-state">暂未启用</span>
+          </div>
+          <p class="card-desc">朗读功能<b>暂时未接入</b>，课程页会显示「暂未启用」。后续会通过 API 接入 TTS 服务，
+            接上之后这里填服务地址就能用（要求服务提供 <code>/health</code> 和 <code>/tts.wav</code> 两个端点）。</p>
+          <div class="hint" style="margin-bottom:10px">
+            ⚠️ 之前本地部署的 MOSS-TTS-Nano（728MB 模型）已不在磁盘上，所以现在点「让老师讲这一页」不会有声音 ——
+            这是已知状态，不是你操作错了。
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:0 0 240px">
+              <label>服务地址（接入后填写）</label>
+              <input type="text" id="set-tts-base" placeholder="http://127.0.0.1:8123">
+            </div>
+            <div class="form-group">
+              <label>老师的声音</label>
+              <select id="set-tts-voice"><option value="">（未接入）</option></select>
+            </div>
+            <div class="form-group" style="flex:0 0 160px">
+              <label>语速</label>
+              <input type="range" id="set-tts-rate" min="0.6" max="1.6" step="0.1" value="1">
+            </div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-secondary" id="btn-tts-check">检测服务</button>
+            <button class="btn btn-secondary" id="btn-tts-test">试听一句</button>
+            <button class="btn btn-primary" id="btn-tts-save">保存</button>
+          </div>
+          <div id="set-tts-status" class="hint"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>高考难度折算系数</h3>
+            <span class="card-sub" id="set-diff-summary"></span>
+          </div>
+          <p class="card-desc">校内卷（作业、模拟考）通常比高考容易。这里把"卷面得分率"折算成"高考等效得分率"——
+            比如数学 0.72 表示「模拟卷考 80% ≈ 高考 57.6%」。留空则用默认值。
+            默认值由 LongCat-2.5 对近 10 年真题与校内模拟卷得分率的对比分析得出；<b>如果你们学校卷子偏难/偏易，可以按实际情况调</b>。</p>
+          <div id="set-diff-rows" class="tb-rows"></div>
+          <div class="btn-group" style="margin-top:12px">
+            <button class="btn btn-primary btn-sm" id="btn-diff-save">保存系数</button>
+            <button class="btn btn-secondary btn-sm" id="btn-diff-reset">恢复默认</button>
+          </div>
+          <div id="set-diff-status" class="hint"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>高考目标分</h3>
+            <span class="card-sub" id="set-goal-summary"></span>
+          </div>
+          <p class="card-desc">总分目标 + 每科目标分。估算和规划都会对照它算差距；
+            每科留空就只按总分目标算。填好后点「AI 重新估算」，分析里会逐科对照目标。</p>
+          <div class="form-row">
+            <div class="form-group" style="flex:0 0 220px">
+              <label>总分目标（满分 750）</label>
+              <input type="number" id="set-goal-total" min="100" max="750" step="0.5" placeholder="如：620">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label>各科加起来的和（自动算，用来核对总分）</label>
+              <div class="hint" id="set-goal-sum" style="margin-top:6px">—</div>
+            </div>
+          </div>
+          <div id="set-goal-rows" class="tb-rows"></div>
+          <div class="btn-group" style="margin-top:12px">
+            <button class="btn btn-primary btn-sm" id="btn-goal-save">保存目标</button>
+            <button class="btn btn-secondary btn-sm" id="btn-goal-even">按总分均分到各科</button>
+          </div>
+          <div id="set-goal-status" class="hint"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>AI 共享记忆</h3>
+            <span class="card-sub">所有模块共用同一个"人"</span>
+          </div>
+          <p class="card-desc">问卷、试卷分析、辅导对话、规划、估算都会读同一份记忆。</p>
+          <div class="memory-list" id="memory-list"></div>
+          <div class="btn-group" style="margin-top:12px">
+            <button class="btn btn-secondary btn-sm" id="btn-memory-refresh">刷新</button>
+            <button class="btn btn-danger btn-sm" id="btn-clear-memory">清空记忆</button>
+          </div>
+        </div>
+
+        <!-- ★ 数据打通中心（2026-10-24） -->
+        <div class="card" id="dt-hub-card">
+          <div class="card-header">
+            <h3>AI 数据打通</h3>
+            <span class="card-sub" id="dt-hub-status">检查中…</span>
+          </div>
+          <p class="card-desc">
+            把你在学徒里录的卷子、错题、上课记录，同步给 DeepTutor 深度辅导。
+            同步后，AI 家教才知道你的具体情况，而不是给你泛泛的建议。
+          </p>
+
+          <div id="dt-hub-info" style="margin-bottom:14px"></div>
+
+          <div class="btn-group">
+            <button class="btn btn-primary btn-sm" id="btn-dt-sync-all">立即全量同步</button>
+            <button class="btn btn-sm" id="btn-dt-pull">从 DeepTutor 拉回</button>
+            <button class="btn btn-sm" id="btn-dt-open-workspace">打开工作区</button>
+            <button class="btn btn-sm" id="btn-dt-check">检查连接</button>
+          </div>
+
+          <div id="dt-hub-log" style="margin-top:12px"></div>
+        </div>
+
+                <!-- ★ 匿名使用统计（2026-10-31，默认关） -->
+        <div class="card" id="usage-stats-card">
+          <div class="card-header">
+            <h3>匿名使用统计</h3>
+            <span class="card-sub" id="usage-status">默认关闭</span>
+          </div>
+          <p class="card-desc">
+            开源后想知道有多少人在用。<b>默认关闭</b>，只有你主动开才会上报。
+            <br><b>只发匿名计数</b>：随机 ID + 启动次数 + 版本号。
+            <b>不发</b>：成绩、错题、对话、姓名、学校、IP —— 一概不发。
+          </p>
+
+          <div class="form-group">
+            <label>上报地址（你自己的云端 URL）</label>
+            <input id="usage-endpoint" class="input" type="text"
+              placeholder="https://你的云端地址/collect（留空则完全不上报）">
+            <div class="hint" style="font-size:11.5px;margin-top:4px">
+              填你 WorkBuddy 云端、或任何接收 JSON 的 HTTP 端点。
+              留空 = 完全不上报，即使开了开关也不发。
+            </div>
+          </div>
+
+          <div class="btn-group">
+            <button class="btn btn-primary btn-sm" id="btn-usage-enable">开启匿名统计</button>
+            <button class="btn btn-sm" id="btn-usage-disable">关闭</button>
+            <button class="btn btn-sm btn-ghost" id="btn-usage-preview">看看会发什么</button>
+          </div>
+
+          <div id="usage-preview" style="margin-top:10px"></div>
+          <div class="hint" id="usage-meta" style="margin-top:8px"></div>
+        </div>
+
+<div class="card">
+          <div class="card-header">
+            <h3>数据备份与恢复</h3>
+            <span class="card-sub" id="backup-state">检查中…</span>
+          </div>
+          <p class="card-desc">数据平时存在浏览器里，<b>清缓存就没了</b>。这里可以把整份数据真正写到磁盘
+            （<code>backups/</code> 目录），改完数据会自动存一份快照。服务没开时会在浏览器内兜底留 5 份。</p>
+          <div class="btn-group">
+            <button class="btn btn-primary btn-sm" id="btn-backup-now">立即备份到磁盘</button>
+            <button class="btn btn-secondary btn-sm" id="btn-backup-list">查看/恢复备份</button>
+            <button class="btn btn-secondary btn-sm" id="btn-export2">导出文件</button>
+            <button class="btn btn-secondary btn-sm" id="btn-import">从文件导入…</button>
+            <button class="btn btn-secondary btn-sm" id="btn-migrate">数据迁移向导…</button>
+            <input type="file" id="import-file" accept=".json,application/json" class="hidden">
+          </div>
+          <div id="backup-list" style="margin-top:12px"></div>
+          <div class="hint" id="backup-hint" style="margin-top:8px"></div>
+          <div class="hint" id="data-dir-hint" style="margin-top:6px"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>数据管理</h3></div>
+          <p class="card-desc">清除后积分和监控校准数据会保留</p>
+          <div class="btn-group">
+            <button class="btn btn-secondary" id="btn-export">导出备份</button>
+            <button class="btn btn-secondary" id="btn-reset-setup">重做问卷</button>
+            <button class="btn btn-danger" id="btn-clear-data">清除学习数据</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<!-- ══════════ 首次使用引导 ══════════ -->
+<div id="setup-wizard" class="hidden">
+  <div class="wizard-container">
+    <div class="wizard-steps">
+      <div class="wizard-dot active" id="wiz-dot-1"><span class="num">1</span><span>接入大模型</span></div>
+      <div class="wizard-sep"></div>
+      <div class="wizard-dot" id="wiz-dot-2"><span class="num">2</span><span>学习问卷</span></div>
+      <div class="wizard-sep"></div>
+      <div class="wizard-dot" id="wiz-dot-3"><span class="num">3</span><span>AI 分析</span></div>
+    </div>
+
+    <!-- 步骤 1：API -->
+    <div id="setup-step-1" class="wizard-step active">
+      <h2>接入大模型</h2>
+      <p class="wizard-sub">问卷、出卷、批改、估算全部由大模型完成，请先配置一个接口。</p>
+
+      <!-- ★ WorkBuddy 免费通道（放在最上面，省得用户先填一堆东西） -->
+      <div class="card hidden" id="wiz-wb-card"
+           style="margin:0 0 20px;border:1px solid rgba(217,119,6,.45);background:rgba(255,251,235,.75)">
+        <div class="card-header" style="margin-bottom:6px">
+          <h3 style="font-size:15px">使用 WorkBuddy Token（免费，自用测试）</h3>
+          <span class="card-sub" id="wiz-wb-state">检测中…</span>
+        </div>
+        <p class="card-desc" style="margin-bottom:10px;font-size:13px">
+          复用本机 <b>WorkBuddy 桌面 App</b> 已登录账号的积分，<b>不用自己的 API Key</b>，
+          测试阶段省钱。开了之后连「读图识别试卷」也走它。
+        </p>
+        <div class="form-row" style="margin-bottom:10px">
+          <div class="form-group" style="margin:0">
+            <label style="font-size:12.5px">用哪个模型</label>
+            <select id="wiz-wb-model">
+              <option value="auto">载入中…</option>
+            </select>
+          </div>
+        </div>
+        <div class="wb-pool-line" id="wiz-wb-pool"></div>
+        <div class="btn-group" style="margin-top:10px">
+          <button class="btn btn-primary btn-sm" id="btn-wiz-wb-enable">用 WorkBuddy（跳过填 Key）</button>
+          <button class="btn btn-secondary btn-sm" id="btn-wiz-wb-test">测试一次</button>
+          <button class="btn btn-secondary btn-sm" id="btn-wiz-wb-reset">清冷却</button>
+          <button class="btn btn-danger btn-sm" id="btn-wiz-wb-off">关闭</button>
+        </div>
+        <div class="hint" id="wiz-wb-hint" style="margin-top:8px"></div>
+      </div>
+
+      <div class="form-group">
+        <label>模型供应商</label>
+        <select id="api-provider"></select>
+      </div>
+      <div class="form-group">
+        <label>模型</label>
+        <select id="api-model"></select>
+      </div>
+      <div class="form-group hidden" id="api-model-custom-group">
+        <label>模型名称</label>
+        <input type="text" id="api-model-custom" placeholder="如：my-model">
+      </div>
+      <div class="form-group hidden" id="api-baseurl-group">
+        <label>API 地址</label>
+        <input type="text" id="api-baseurl" placeholder="https://api.example.com/v1">
+      </div>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="password" id="api-key" placeholder="sk-...">
+        <div class="hint">只保存在本机浏览器里，不会上传到任何服务器</div>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-secondary" id="btn-test-api">测试连接</button>
+        <button class="btn btn-primary" id="btn-api-next">下一步</button>
+      </div>
+
+      
+
+      <div id="api-status" class="hint"></div>
+    </div>
+
+    <!-- 步骤 2：问卷 -->
+    <div id="setup-step-2" class="wizard-step">
+      <h2>学习问卷</h2>
+      <p class="wizard-sub">填完交给 AI 分析——不用你自己判断强弱项，那是模型的工作。</p>
+      <div class="form-row">
+        <div class="form-group"><label>省份 / 城市</label><input type="text" id="q-city" placeholder="如：浙江杭州"></div>
+        <div class="form-group">
+          <label>年级</label>
+          <select id="q-grade"><option>高一</option><option>高二</option><option selected>高三</option></select>
+        </div>
+        <div class="form-group"><label>入学年份</label><input type="number" id="q-enroll-year" placeholder="如：2023"></div>
+      </div>
+
+      <div class="form-group">
+        <label>选科组合（3+3，选 3 门）</label>
+        <div id="q-subjects" class="subject-selector"></div>
+        <div class="hint" id="subject-hint">还有 3 门待选</div>
+      </div>
+
+      <div class="form-group">
+        <label>教材进度 —— 这六科现在分别上到哪了？</label>
+        <div id="q-textbook" class="tb-rows"></div>
+        <div class="hint">写「必修第一册 第三章」这种就可以，不用很精确。出题会卡在这个范围内不超纲；以后进度推进了，随时在「AI 出卷」页更新。</div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>最近一次月考总分</label>
+          <input type="number" id="q-exam-score" placeholder="如：520">
+          <div class="hint">填月考成绩，不是估计分</div>
+        </div>
+        <div class="form-group"><label>月考时间</label><input type="date" id="q-exam-date"></div>
+        <div class="form-group"><label>下次月考时间</label><input type="date" id="q-next-exam"></div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>每日可用学习时间</label>
+          <select id="q-hours">
+            <option value="1">1 小时以内</option><option value="2">1-2 小时</option>
+            <option value="3" selected>2-3 小时</option><option value="4">3-4 小时</option>
+            <option value="6">4-6 小时</option><option value="8">6 小时以上</option>
+          </select>
+        </div>
+        <div class="form-group"><label>目标大学</label><input type="text" id="q-target-school" placeholder="如：浙江大学"></div>
+        <div class="form-group"><label>目标分数</label><input type="number" id="q-target-score" placeholder="如：650"></div>
+      </div>
+
+      <div class="form-group">
+        <label>想提升的方面（可多选）</label>
+        <div class="checkbox-group">
+          <label><input type="checkbox" id="q-focus-base" checked> 基础知识</label>
+          <label><input type="checkbox" id="q-focus-difficult"> 难题突破</label>
+          <label><input type="checkbox" id="q-focus-mistake" checked> 易错点巩固</label>
+          <label><input type="checkbox" id="q-focus-speed"> 做题速度</label>
+          <label><input type="checkbox" id="q-focus-exam"> 考试技巧</label>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-secondary" id="btn-back-1">上一步</button>
+        <button class="btn btn-primary" id="btn-analyze">AI 分析我的学习情况</button>
+      </div>
+      <div id="quiz-status" class="hint"></div>
+    </div>
+
+    <!-- 步骤 3：报告 -->
+    <div id="setup-step-3" class="wizard-step">
+      <h2>AI 学习分析报告</h2>
+      <p class="wizard-sub">这份报告已经存进 AI 记忆，后面所有模块都认得它。</p>
+      <div id="analysis-result"></div>
+      <div class="btn-group" style="margin-top:18px">
+        <button class="btn btn-primary btn-lg" id="btn-start-learning">开始学习</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-wrap"></div>
+
+<!-- 走神警告：必须是真正的全屏遮罩，所以放在最外层。
+     放在玻璃卡片内部时会被卡片的 backdrop-filter / transform 困住
+     （它们都会成为 fixed 定位的"包含块"），遮罩就只能盖住卡片而盖不住全屏。 -->
+<div class="proctor-overlay hidden" id="proctor-overlay">
+  <div class="proctor-msg" id="proctor-msg">专注一点</div>
+</div>
+
+<script src="../shared/data.js?v=64"></script>
+  <script src="../shared/grader.js?v=91"></script>
+  <script src="../shared/storage.js?v=64"></script>
+<script src="../shared/backup.js?v=64"></script>
+<script src="../shared/usage-stats.js?v=108"></script>
+  <script src="../shared/memory.js?v=115"></script>
+  <script src="../shared/proactive.js?v=115"></script>
+  <script src="../shared/gaokao-bar.js?v=115"></script>
+  <script src="../shared/student-profile.js?v=102"></script>
+  <script src="../shared/util-core.js?v=64"></script>
+<script src="../shared/wb-client.js?v=64"></script>
+<script src="../shared/llm.js?v=64"></script>
+<script src="../shared/progress.js?v=64"></script>
+<script src="../shared/dt-sync.js?v=78"></script>
+  <script src="../shared/evidence-v2.js?v=71"></script>
+<script src="../shared/aptitude.js?v=71"></script>
+<script src="../shared/evidence.js?v=64"></script>
+<script src="../shared/backtest.js?v=64"></script>
+<script src="../shared/planner.js?v=64"></script>
+<script src="../shared/quiz.js?v=64"></script>
+  <script src="../shared/review.js?v=92"></script>
+<script src="../shared/proctor.js?v=64"></script>
+<script src="../shared/speech.js?v=64"></script>
+<script src="../shared/course.js?v=64"></script>
+<script src="js/course-view.js?v=64"></script>
+<script src="js/readiness-ui.js?v=71"></script>
+  <script src="js/aptitude-ui.js?v=71"></script>
+  <script src="js/dt-chat.js?v=86"></script>
+  <script src="js/deeptutor-ui.js?v=71"></script>
+  <script src="js/review-ui.js?v=92"></script>
+  <script src="js/tutorhub-ui.js?v=102"></script>
+  <script src="js/agent-ui.js?v=78"></script>
+  <script src="js/dt-hub.js?v=81"></script>
+  <script src="js/app.js?v=64"></script>
+</body>
+</html>

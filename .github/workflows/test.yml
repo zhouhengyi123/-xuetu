@@ -1,0 +1,37 @@
+name: 回归测试
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: 安装 Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: 安装 Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: 下载第三方库
+      run: node scripts/setup-vendor.cjs
+
+    - name: 启动本地服务
+      run: |
+        Start-Process python -ArgumentList "server.py" -WindowStyle Hidden
+        Start-Sleep -Seconds 3
+      shell: pwsh
+
+    - name: 跑回归测试
+      run: node 跑测试.cjs
+      shell: pwsh
