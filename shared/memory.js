@@ -178,6 +178,25 @@ const Memory = (() => {
       }
     }
 
+    /**
+     * ⑥ 教学经验库（2026-11-01）
+     *
+     * 前三层都是「这个学生」，这一层是「老师自己积累的教学知识」。
+     * 深度辅导（dt-chat）和 Agent 都从这里取上下文，
+     * 所以教学经验也要挂在同一入口，否则它们看不到用户导入的资料。
+     *
+     * 只有调用方给了 query 才检索（避免无处命中时硬塞）。
+     */
+    try {
+      if (typeof Teaching !== 'undefined' && o.query) {
+        const blk = Teaching.promptBlock(String(o.query), { subject: o.subject || '' });
+        if (blk) {
+          parts.push('');
+          parts.push(blk);
+        }
+      }
+    } catch (e) {}
+
     return {
       text: parts.join('\n'),
       profile: profile,

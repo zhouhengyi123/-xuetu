@@ -27,9 +27,48 @@ const QuizEngine = (() => {
       });
     } catch (e) {
       console.warn('AI出题失败:', e);
-      questions = DB.getFallback(subject, parseInt(count) || 10).map(function(q, i) {
-        return Object.assign({}, q, { index: i + 1, subject: subject, studentAnswer: null });
-      });
+      /**
+       * ★ 兜底升级（2026-11-01）
+       *
+       * 原来只走 DB.getFallback，每科只有零星几道题，出 10 道题会明显重复。
+       * 现在优先用 Teaching.bankQuestions（内置 135 道高考同型/联考典型题，
+       * 按科目 + 知识点 + 难度筛选），题库不够再用 DB.getFallback 补齐。
+       */
+      var n = parseInt(count) || 10;
+      var banked = [];
+      try {
+        if (typeof Teaching !== 'undefined' && Teaching.bankQuestions) {
+          banked = Teaching.bankQuestions({
+            subject: subject,
+            knowledge: knowledge || '',
+            difficulty: difficulty,
+            count: n,
+          });
+          // 置空学生答案字段，保证是全新的卷子
+          banked = banked.map(function(q, i) {
+            return Object.assign({}, q, { index: i + 1, subject: subject, studentAnswer: null });
+          });
+        }
+      } catch (e2) { console.warn('内置题库读取失败:', e2); }
+
+      if (banked.length >= n) {
+        questions = banked.slice(0, n);
+      } else {
+        // 题库不够：先用题库，再用 DB.getFallback 补齐并去重
+        var used = banked.map(function(q) { return q.text; });
+        var extra = DB.getFallback(subject, n - banked.length).map(function(q, i) {
+          return Object.assign({}, q, { index: 0, subject: subject, studentAnswer: null });
+        }).filter(function(q) { return used.indexOf(q.text) < 0; });
+        questions = banked.concat(extra).map(function(q, i) {
+          return Object.assign({}, q, { index: i + 1 });
+        });
+      }
+      if (!questions.length) {
+        questions = DB.getFallback(subject, n).map(function(q, i) {
+          return Object.assign({}, q, { index: i + 1, subject: subject, studentAnswer: null });
+        });
+      }
+      console.log('[quiz] 使用内置题库兜底：' + questions.length + ' 题');
     }
 
     quiz = {

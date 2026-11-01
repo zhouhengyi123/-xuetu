@@ -199,6 +199,31 @@ const App = (() => {
       }
     } catch (e) {}
 
+    /**
+     * ★ 教学经验库（2026-11-01）
+     *
+     * 前面几段都是「这个学生是谁」，这段是「老师自己积累的教学知识」。
+     * 用户导入的教学经验 / 知识点 / 易错陷阱 / 解题方法都在这里，
+     * 由 Teaching.promptBlock 按科目 + 关键词检索后注入，命中才占 token。
+     *
+     * 挂在这里而不是每个 AI 里各写一遍：
+     * persona() 是 LLM.setPersona 的唯一来源，改一处，
+     * 快速问答 / 出卷 / 批改 / 规划 / 估算 / 答疑 全部生效。
+     */
+    try {
+      if (typeof Teaching !== 'undefined') {
+        const subjects = allSixSubjects();
+        // 没给具体问题（比如出卷、规划），就退化成「各科的高重要度经验」
+        const q = String((typeof window !== 'undefined' && window.__teachQuery) || '') || subjects.join(' ') + ' 常见错误 解题方法';
+        const sub = (typeof window !== 'undefined' && window.__teachSubject) || '';
+        const blk = Teaching.promptBlock(q, { subject: sub });
+        if (blk) {
+          L.push('');
+          L.push(blk);
+        }
+      }
+    } catch (e) { console.warn('[persona] 教学经验库注入失败:', e); }
+
     return L.join('\n');
   }
 
@@ -219,13 +244,38 @@ const App = (() => {
    */
   async function ask(userInput, opts) {
     opts = opts || {};
-    return await LLM.chat([{ role: 'user', content: userInput }], {
-      maxTokens: opts.maxTokens || 2500,
-      temperature: opts.temperature,
-      noPersona: opts.noPersona,
-      // ★ 模型透传：AI 助教页选了这个模型就用它（undefined = 自动路由）
-      model: opts.model || undefined,
-    });
+    /**
+     * ★ 把「这次要问什么」告诉 persona()，让教学经验库检索得准（2026-11-01）
+     *
+     * persona() 是全局共享的 system 拼装器，它不知道这次调用的具体问题。
+     * 这里先把问题写进窗口变量，LLM.chat 内部取 persona 时就能按关键词检索，
+     * 调完立即还原，避免影响别的调用。
+     */
+    const prevQ = window.__teachQuery;
+    const prevS = window.__teachSubject;
+    try {
+      if (typeof userInput === 'string') window.__teachQuery = userInput.slice(0, 400);
+      else if (Array.isArray(userInput)) {
+        const t = userInput.filter(p => p && p.type === 'text').map(p => p.text).join(' ');
+        if (t) window.__teachQuery = t.slice(0, 400);
+      }
+      if (opts.subject) window.__teachSubject = opts.subject;
+    } catch (e) {}
+
+    try {
+      return await LLM.chat([{ role: 'user', content: userInput }], {
+        maxTokens: opts.maxTokens || 2500,
+        temperature: opts.temperature,
+        noPersona: opts.noPersona,
+        // ★ 模型透传：AI 助教页选了这个模型就用它（undefined = 自动路由）
+        model: opts.model || undefined,
+      });
+    } finally {
+      try {
+        window.__teachQuery = prevQ;
+        window.__teachSubject = prevS;
+      } catch (e) {}
+    }
   }
 
   /** 要 JSON 的调用（自动补提示 + 稳健解析） */
@@ -248,6 +298,7 @@ const App = (() => {
     progress: { title: '进度追踪', sub: '高考预估与提分曲线' },
     weakness: { title: '薄弱点', sub: 'AI 归纳的易错知识点' },
     import: { title: '导入试卷', sub: '上传试卷，每科满 5 份做独立分析' },
+    teach: { title: '教学资料', sub: '导入你自己的经验与知识点，AI 按需检索使用' },
     course: { title: '生成课程', sub: '说想学什么 → 生成课 → 一节一节学，随时可打断提问' },
     settings: { title: '设置', sub: '模型接口、记忆与数据' },
   };
@@ -367,9 +418,17 @@ const App = (() => {
       chat: renderChat, photo: renderPhoto, camera: renderCamera,
       progress: renderProgress, weakness: renderWeakness, import: renderImport,
       settings: renderSettings, course: renderCourse,
+      teach: renderTeaching,
     }[pageId];
     if (fn) { try { fn(); } catch (e) { console.error('render ' + pageId + ' 失败', e); } }
     updateBadges();
+  }
+
+  /** 教学资料页（2026-11-01）：逻辑在 web/js/teaching-ui.js */
+  function renderTeaching() {
+    try {
+      if (typeof TeachingUI !== 'undefined' && TeachingUI.mount) TeachingUI.mount();
+    } catch (e) { console.warn('[teach] 渲染失败:', e); }
   }
 
   // ════════════════════════════════════════════════════════════

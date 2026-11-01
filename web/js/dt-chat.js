@@ -148,7 +148,13 @@ const DTChat = (() => {
      */
     try {
       if (typeof Memory !== 'undefined' && Memory.context) {
-        const mem = Memory.context({ forAi: 'deep', includeTurns: false });
+        // ★ 带上这次的问题，让教学经验库能按关键词检索（2026-11-01）
+        const mem = Memory.context({
+          forAi: 'deep',
+          includeTurns: false,
+          query: typeof content === 'string' ? content.slice(0, 400) : '',
+          subject: (opts && opts.subject) || '',
+        });
         if (mem && mem.text && mem.text.length > 50) {
           content = mem.text + '\n\n---\n\n' + content;
         }

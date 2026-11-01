@@ -79,3 +79,7 @@ releases/
 *.zip
 dist/
 dist-slim/
+
+# 运行时生成的备份（含用户数据，不入库）
+backups/
+
