@@ -48,8 +48,15 @@
 
 | 文件 | 大小 | 说明 |
 |---|---|---|
-| **`xuetu-slim-setup-1.1.0.exe`** | 84 MB | **推荐**。核心功能齐全，不含 DeepTutor 深度辅导 |
-| `xuetu-full-setup-1.1.0.exe` | 284 MB | 完整版，含 DeepTutor（额外约 700 MB 磁盘，安装较慢） |
+| **`xuetu-slim-setup-1.2.0.exe`** | 84 MB | **推荐**。核心功能齐全，不含 DeepTutor 深度辅导 |
+| `xuetu-full-setup-1.2.0.exe` | 284 MB | 完整版，含 DeepTutor（额外约 700 MB 磁盘，安装较慢） |
+
+校验值见 Release 里的 `SHA256SUMS.txt`。
+
+> **v1.2.0（2026-11-07）已包含**：日韩考试制度与教材知识点适配、一节课分步辅导、
+> 住校生作息、按考试日反推的复习间隔，以及一次外部深度体验审计后的 3 个 P0 修复
+> （重启数据不再丢失、出门测不再卡死、课前诊断正常出现）。
+> 详见 [Release 说明](https://github.com/zhouhengyi123/-xuetu/releases/tag/v1.2.0)。
 
 **双击 → 下一步 → 完成**，桌面上会出现「学徒 · AI 学习系统」图标。
 
