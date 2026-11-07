@@ -12,6 +12,15 @@
 const LessonUI = (() => {
 
   let mounted = false;
+  /** 延迟重绘期间暂存反馈，避免被 render() 擦掉（P2-5） */
+  let _pendingFeedback = '';
+
+  function restoreFeedback() {
+    if (!_pendingFeedback) return;
+    const fb = $('ls-feedback');
+    if (fb) fb.innerHTML = '<div class="ai-box">' + esc(_pendingFeedback) + '</div>';
+    _pendingFeedback = '';
+  }
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -42,37 +51,71 @@ const LessonUI = (() => {
     },
   };
 
-  function bankFor(subject) {
-    return BANK[subject] || {
+  /**
+   * 通用兜底课程：不编造具体学科知识（没有该科目的内置题库时），
+   * 用「概念 → 关键步骤 → 变式」的分步框架，仍然符合真人家教法的
+   * 「例题 → 分步 → 即时反馈 → 出门测」结构。
+   * 每步 expected 统一用「会」，并明确告诉学生这不是在考知识点，
+   * 而是在练「把思路讲清楚」—— 对应 Chi 2001 的自我解释。
+   */
+  function genericBank(subject) {
+    const tag = String(subject || '本节');
+    return {
       diagnose: [
-        { q: '用自己的话写出本节最重要的一个概念', answer: '会', knowledge: '概念' },
+        { q: '用自己的话写出「' + tag + '」最重要的一个概念', answer: '会', knowledge: '概念' },
+        { q: '这个概念通常用来解决哪一类问题？', answer: '会', knowledge: '适用条件' },
       ],
       guided: {
-        steps: [{ prompt: '写出这个知识点的关键一步', expected: '会', hints: ['先回忆定义', '举一个例子', '把关键词写下来'] }],
-        knowledge: '概念',
+        steps: [
+          { prompt: '第 1 步：写出这个知识点的定义或公式，并圈出关键条件', expected: '会',
+            hints: ['先翻回课本对应小节', '定义里的限制条件是什么？', '把关键词逐个写下来', '用一句话复述定义'] },
+          { prompt: '第 2 步：举一个最简单的例子，写出第一步怎么做', expected: '会',
+            hints: ['从最特殊的情形入手', '把已知量先列出来', '只写第一步，不用算到底', '对照定义检查这一步'] },
+        ],
+        knowledge: tag + '基础',
       },
-      exit: [{ q: '换一种说法再写一遍', answer: '会', knowledge: '概念' }],
+      exit: [
+        { q: '变式：换一个数字或情境，你还会写出第一步吗？（会/不会 + 一句话理由）', answer: '会', knowledge: '概念' },
+        { q: '用一句话说出这节课最容易卡住的是哪一步', answer: '会', knowledge: '适用条件' },
+      ],
     };
   }
 
-  function mount() {
-    if (mounted) return;
-    mounted = true;
+  function bankFor(subject) { return BANK[subject] || genericBank(subject); }
+
+  /**
+   * ★ 2026-11-07 修（外部审计 P1-4）：
+   * 原来只在 `options.length === 0` 时填充，切换考试制度后下拉不重建，
+   * 日韩模式下「一节课」科目仍是中文六科。
+   * 现在抽成独立函数，切制度时由 app.js 主动调用。
+   */
+  function rebuildSubjects() {
     const sel = $('ls-subject');
-    if (sel && sel.options.length === 0) {
-      // 用当前考试制度的科目（日韩用本地科目名）；中国沿用 data.js
-      let subs = ['语文', '数学', '英语', '物理', '化学', '生物'];
-      try {
-        if (typeof Region !== 'undefined' && Region.current() !== 'cn-gaokao') {
-          subs = Region.profile().subjects.slice();
-        }
-      } catch (e) {}
-      subs.forEach(s => {
-        const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o);
-      });
+    if (!sel) return;
+    let subs = ['语文', '数学', '英语', '物理', '化学', '生物'];
+    try {
+      if (typeof Region !== 'undefined' && Region.current() !== 'cn-gaokao') {
+        subs = Region.profile().subjects.slice();
+      }
+    } catch (e) {}
+    const prev = sel.value;
+    sel.innerHTML = '';
+    subs.forEach(s => {
+      const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o);
+    });
+    // 尽量保留用户上次选的科目
+    const keep = subs.indexOf(prev);
+    if (keep >= 0) sel.selectedIndex = keep;
+    else {
       const mathIdx = subs.indexOf('数学');
       if (mathIdx >= 0) sel.selectedIndex = mathIdx;
     }
+  }
+
+  function mount() {
+    if (mounted) { rebuildSubjects(); render(); return; }
+    mounted = true;
+    rebuildSubjects();
     bind();
     render();
   }
@@ -93,10 +136,22 @@ const LessonUI = (() => {
     const subject = $('ls-subject').value || '数学';
     const topic = ($('ls-topic').value || '').trim() || '本节内容';
     const bank = bankFor(subject);
+    // ★ 只备「诊断 + 例题」。出门测等例题全部做完再 prepareExit()，
+    //   否则 setExit() 会把 stage 直接推到 exit，诊断和例题都被跳过。
     TutorSession.start(subject, topic, bank.diagnose);
     TutorSession.addGuided(bank.guided.steps, bank.guided.knowledge);
     render();
     if (typeof toast === 'function') toast('先从 2 道诊断题开始，定位起点', 'success');
+  }
+
+  /** 进入出门测前把题目备好（唯一的 setExit 入口） */
+  function prepareExit(subject) {
+    if (typeof TutorSession === 'undefined') return;
+    const s = TutorSession.get();
+    if (s.exit && s.exit.length) return;           // 已有题就不重复建
+    const bank = bankFor(subject || s.subject || '数学');
+    TutorSession.setExit(bank.exit);
+    render();
   }
 
   function render() {
@@ -130,6 +185,7 @@ const LessonUI = (() => {
     body.innerHTML = html;
     wireInputs(s);
     renderSide();
+    restoreFeedback();
   }
 
   function renderDiagnose(s) {
@@ -184,11 +240,22 @@ const LessonUI = (() => {
   }
 
   function renderExit(s) {
-    // 出门测没题目时，从 bank 取
+    /**
+     * ★ 2026-11-07 修（外部审计 P0-2）：
+     * 原来这里在 `!s.exit.length` 时调 setExit(bank.exit) 后直接
+     * return 一个「正在准备出门测…」占位符，**再也不 render()**，
+     * 于是页面永久卡死、整节课无法结课。
+     *
+     * 根因是「在渲染函数里改状态」。现在改成纯渲染：
+     * 题目在 onStart() / 进入 exit 时就已备好；万一真没题（兼容旧存档），
+     * 补一个明确的「重新准备」按钮，由用户点击触发，绝不留死路。
+     */
     if (!s.exit.length) {
-      const bank = bankFor(s.subject);
-      TutorSession.setExit(bank.exit);
-      return '<div class="hint">正在准备出门测…</div>';
+      return '<div class="card" style="margin:0">' +
+        '<div class="card-header"><h3>出门测</h3></div>' +
+        '<p class="hint">这节课的出门测题目没准备好（可能是旧版本的存档）。</p>' +
+        '<button class="btn btn-primary" id="ls-prepare-exit">重新准备出门测</button>' +
+        '</div>';
     }
     const pending = s.exit.findIndex(q => q.correct == null);
     if (pending < 0) return '<div class="hint">判分中…</div>';
@@ -255,11 +322,10 @@ const LessonUI = (() => {
     const ans = $('ls-ans');
     const fb = $('ls-feedback');
 
-    if (toExit) toExit.addEventListener('click', () => {
-      const bank = bankFor(s.subject);
-      TutorSession.setExit(bank.exit);
-      render();
-    });
+    if (toExit) toExit.addEventListener('click', () => prepareExit(s.subject));
+    // 兼容旧存档：出门测没准备好时，给一个明确的补救入口
+    const prep = $('ls-prepare-exit');
+    if (prep) prep.addEventListener('click', () => prepareExit(s.subject));
 
     if (hintBtn) hintBtn.addEventListener('click', () => {
       const gi = s.guided.findIndex(g => !g.done);
@@ -285,8 +351,22 @@ const LessonUI = (() => {
         const r = TutorSession.answerStep(gi, val);
         if (fb) fb.innerHTML = '<div class="ai-box">' + esc(r.feedback || '') + '</div>';
         if (ans) ans.value = '';
-        // 延迟刷新，让学生先看到反馈
-        setTimeout(render, r.correct ? 900 : 1200);
+        /**
+         * ★ 2026-11-07 修两处：
+         *  P0-2：例题最后一步答对后，引擎会把 stage 推到 'exit'，
+         *        但题目还没建 —— 必须在重绘前先 prepareExit()，
+         *        否则页面停在「正在准备出门测…」永远出不来。
+         *  P2-5：反馈文字原来被 setTimeout(render) 重建 DOM 擦掉，
+         *        这里把反馈暂存到模块变量，render 后再填回去。
+         */
+        const now = TutorSession.get();
+        const needExit = (now.stage === 'exit' && (!now.exit || !now.exit.length));
+        _pendingFeedback = r.feedback || '';
+        setTimeout(() => {
+          if (needExit) { prepareExit(s.subject); }
+          else render();
+          restoreFeedback();
+        }, r.correct ? 900 : 1200);
       } else if (s.stage === 'exit') {
         const i = s.exit.findIndex(q => q.correct == null);
         const r = TutorSession.answerExit(i, val);
@@ -308,7 +388,7 @@ const LessonUI = (() => {
     });
   }
 
-  return { mount, render };
+  return { mount, render, rebuildSubjects, prepareExit };
 })();
 
 if (typeof window !== 'undefined') window.LessonUI = LessonUI;

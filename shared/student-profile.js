@@ -131,14 +131,41 @@ const StudentProfile = (() => {
    * 一段话的学生画像。任何 AI 发请求前都带上它，
    * 从此四个 AI 看到的是同一个学生。
    */
+  /**
+   * ★ 2026-11-07 修（外部审计 P1-5）：
+   * getGoal() 的出厂默认值是 {target:600, current:450, grade:'高三',
+   * selectedSubjects:['物理','化学','生物']}。原来 brief() 把它们直接
+   * 拼成「月考起点 450 分，目标 600 分，高三，选考物化生」喂给所有 AI，
+   * 而档案开头还写着「不要编造他没提供的信息」—— 自相矛盾。
+   *
+   * 现在先判断「用户是否真的填过」：setup_completed / setup_data 有内容 /
+   * 有卷子，任一成立才算真实；否则标为系统默认，并明确告诉 AI 别当事实。
+   */
+  function hasRealGoal() {
+    try {
+      if (Storage.get('setup_completed', false) === true) return true;
+      const d = Storage.get('setup_data', null);
+      if (d && typeof d === 'object' && Object.keys(d).length) return true;
+      const papers = Storage.getPapers ? Storage.getPapers() : [];
+      if (papers && papers.length) return true;
+    } catch (e) {}
+    return false;
+  }
+
   function brief() {
     const p = profile();
+    const realGoal = hasRealGoal();
     const L = [];
 
     L.push('【学生档案（所有 AI 共用，请基于此回答，不要编造他没提供的信息）】');
+    if (!realGoal) {
+      L.push('- ⚠ 学生还没有填过问卷，下面带「（系统默认）」的数字是出厂占位值，不是他提供的信息。');
+      L.push('  回答时不要引用这些数字，不要说「你月考 450 分」，先问他实际情况。');
+    }
     L.push('- ' + (p.grade || '高三') + (p.city ? '，' + p.city : '') +
-      (p.selectedSubjects.length ? '，选考：' + p.selectedSubjects.join('、') : ''));
-    if (p.baseline) L.push('- 月考起点 ' + p.baseline + ' 分' + (p.target ? '，目标 ' + p.target + ' 分' : ''));
+      (p.selectedSubjects.length ? '，' + (realGoal ? '选考：' : '选考（系统默认）：') + p.selectedSubjects.join('、') : ''));
+    if (p.baseline) L.push('- ' + (realGoal ? '月考起点 ' : '月考起点（系统默认，未填写）') +
+      p.baseline + ' 分' + (p.target ? '，目标 ' + p.target + ' 分' + (realGoal ? '' : '（系统默认，未填写）') : ''));
     if (p.examYear) L.push('- ' + p.examYear + ' 年 6 月高考');
 
     if (p.papers > 0) {

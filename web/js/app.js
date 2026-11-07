@@ -75,18 +75,24 @@ const App = (() => {
 
   function allSixSubjects() {
     /**
-     * ★ 去掉语文出卷（2026-10-25）
+     * ★ 2026-11-07 修（外部审计 P1-4）：
+     * 原来这个函数永远返回中文六科（数学/英语/物化生…），
+     * 导致切到日韩制度后「进度追踪」「AI 出卷」「一节课」等页面
+     * 仍显示「语文/数学/英语」，设置页却宣称「科目名改用对应制度」——
+     * 属于换层皮式伪适配。
      *
-     * 用户明确要求："去掉语文无意义的出卷，去掉语文这一门科"
-     *
-     * 语文出卷意义不大：
-     *   · 阅读理解、作文没法客观判分
-     *   · 基础题（字词、病句）靠积累，刷题效果差
-     *   · 高考语文更看重阅读量和写作，不是刷题能提高的
-     *
-     * 现在只保留数学、英语、选考科目。
+     * 现在：非中国 region 直接返回该制度的本地科目名（国語/数学①/…、
+     * 국어/수학/…），一处改动让所有科目下拉与统计自动跟着变。
+     * 中国 region 保持原行为完全不变（含「去掉语文出卷」的产品决定）。
      */
-    const g = Storage.getGoal();
+    try {
+      if (typeof Region !== 'undefined' && Region.current() !== 'cn-gaokao') {
+        const subs = Region.profile().subjects;
+        if (subs && subs.length) return subs.slice();
+      }
+    } catch (e) {}
+
+    const g = Storage.getGoal() || {};
     return ['数学', '英语'].concat(g.selectedSubjects || []);
   }
 
@@ -103,7 +109,8 @@ const App = (() => {
     L.push('【学生档案】');
     L.push('- 地区：' + (d.city || g.city || '未填'));
     L.push('- 年级：' + (d.grade || g.grade || '高中'));
-    L.push('- 选科：语文、数学、英语 + ' + allSixSubjects().slice(3).join('、'));
+    // ★ 2026-11-07：科目名跟着 region 走，不再写死中文六科
+    L.push('- 科目：' + allSixSubjects().join('、'));
     L.push('- 最近一次月考总分：' + (d.examScore != null && d.examScore !== '' ? d.examScore : '未知'));
     L.push('- 月考时间：' + (d.examDate || '未填'));
     L.push('- 下次月考：' + (d.nextExam || '未填'));
@@ -431,6 +438,9 @@ const App = (() => {
     $('content').scrollTop = 0;
     moveNavIndicator(activeEl);
     render(pageId);
+    // ★ 2026-11-07 修（P2-1）：DTHub 等统计只在 init/同步后刷新，
+    //   页面切换时不更新，出现「错题本有 5 道，统计显示 0」。
+    try { if (typeof DTHub !== 'undefined' && DTHub.refresh) DTHub.refresh(); } catch (e) {}
     playEnter(pageId);
   }
 
@@ -993,6 +1003,32 @@ const App = (() => {
     }
   }
 
+  /** 逐日编辑作息（P2-4）：用原生 prompt，不引入新依赖 / 新页面 */
+  function editRoutineDay(i) {
+    if (typeof Routine === 'undefined' || !Routine.isConfigured()) return;
+    const cur = Routine.minutesFor(i);
+    const name = Routine.DAYS[i];
+    const raw = window.prompt(
+      name + ' 的可用学习分钟数\n（填 0 或留空 = 这天不安排任务；这是模板起点，请按学校真实作息改）',
+      cur == null ? '' : String(cur)
+    );
+    if (raw === null) return;                       // 取消
+    const trimmed = String(raw).trim();
+    let val;
+    if (trimmed === '') val = null;                 // 不安排
+    else {
+      const n = Number(trimmed);
+      if (!isFinite(n) || n < 0 || n > 720) {
+        if (typeof toast === 'function') toast('请填 0~720 之间的分钟数', 'warn');
+        return;
+      }
+      val = Math.round(n);
+    }
+    Routine.setDay(i, { availableMin: val });
+    renderPlanner();
+    if (typeof toast === 'function') toast(name + (val == null ? ' 设为不安排' : ' 改为 ' + val + ' 分钟'), 'success');
+  }
+
   function onRoutineChange() {
     if (typeof Routine === 'undefined') return;
     const v = ($('p-routine') || {}).value || '';
@@ -1077,10 +1113,25 @@ const App = (() => {
       const fill = mins != null
         ? '<div class="wk-bar-fill" style="width:' + pct + '%"></div>'
         : '<div class="wk-bar-fill" style="width:0;background:transparent"></div>';
-      return '<div class="wk-row"><span class="wk-day"' + (i === dow ? ' style="color:var(--ds-500);font-weight:600"' : '') + '>' + d + (i === dow ? ' · 今天' : '') + '</span>' +
+      // 今天额外高亮；无论是否今天，只要配了作息就都可点开编辑
+      const todayStyle = i === dow ? 'color:var(--ds-500);font-weight:600;' : '';
+      const editStyle = hasRoutine ? 'cursor:pointer;text-decoration:underline dotted' : '';
+      const styleAttr = (todayStyle || editStyle)
+        ? ' style="' + todayStyle + (editStyle ? (todayStyle ? ';' : '') + editStyle : '') + '"' : '';
+      const dayAttr = hasRoutine ? ' data-day="' + i + '"' : '';
+      return '<div class="wk-row"><span class="wk-day"' + styleAttr + dayAttr + '>' + d + (i === dow ? ' · 今天' : '') + '</span>' +
         '<div class="wk-bar">' + fill + '</div>' +
         '<span class="wk-info" title="' + esc(source) + '">' + esc(label) + '</span></div>';
     }).join('');
+    // ★ 2026-11-07 修（外部审计 P2-4）：作息「逐日可编辑」原来只有引擎里的
+    //   setDay()，UI 没有任何入口，点某一天毫无反应 —— 宣称未兑现。
+    if (hasRoutine) {
+      $('weekly-plan').innerHTML += '<div class="hint" style="margin-top:8px;font-size:11.5px">' +
+        '点上面的星期名可改当天可用分钟（改成 0 或留空 = 这天不安排）。改完按你的学校真实作息，别直接照搬模板。</div>';
+      $('weekly-plan').querySelectorAll('.wk-day[data-day]').forEach(el => {
+        el.addEventListener('click', () => editRoutineDay(Number(el.getAttribute('data-day'))));
+      });
+    }
     // 没设作息也不编：给一条明确说明
     if (!hasRoutine && !weekly.length) {
       $('weekly-plan').innerHTML += '<div class="hint" style="margin-top:8px;font-size:11.5px">' +
@@ -2034,7 +2085,13 @@ const App = (() => {
   }
 
   async function analyzePhoto() {
-    if (!photoImages.length) { toast('先拍照或选一张图片', 'warning'); return; }
+    // ★ 2026-11-07：除了 toast（2.6 秒会消失），也在状态区留一句持久提示
+    if (!photoImages.length) {
+      toast('先拍照或选一张图片', 'warning');
+      const st = $('photo-status');
+      if (st) st.textContent = '还没有选图片 —— 先拍照或从本机选一张，再点「AI 读题并批改」。';
+      return;
+    }
     const vc = LLM.getVisionProvider();
     if (!vc.apiKey && !wbReady()) {
       toast('读图模型还没配 Key，去「设置 → 读图模型」', 'error');
@@ -3564,7 +3621,7 @@ const App = (() => {
         '教材覆盖（未学章节按 0 分）：' + covLine + '\n' +
         '难度推断（每道题按高考尺度判 1~5 档，3 档 = 与高考平均相当；偏易再打折、偏难小幅上修）：' + dLine + '\n' +
         '高考难度折算（校内卷普遍比高考容易，已按学科打折，可在「设置」里改）：' + fdesc +
-        '　—— 系数由 LongCat-2.5 对近 10 年真题与校内模拟卷得分率的对比分析得出。';
+        '　—— 这些系数是手工设定的粗略起点，不是统计结论，请按学校卷子实际难度调整。';
       assume.style.whiteSpace = 'pre-line';
     }
 
@@ -5994,7 +6051,7 @@ const App = (() => {
           'placeholder="默认 ' + base + '" value="' + esc(cur) + '" style="flex:0 0 130px;height:32px">' +
         '<span class="hint" style="margin:0;flex:1">' +
           (d.level != null ? '高考难度系数 ' + d.level + ' · ' : '') +
-          (d.avgRate ? '全省平均得分率 ' + Math.round(d.avgRate[0] * 100) + '-' + Math.round(d.avgRate[1] * 100) + '%' : '') +
+          (d.avgRate ? '参考得分率区间（手工设定，非统计）：' + Math.round(d.avgRate[0] * 100) + '-' + Math.round(d.avgRate[1] * 100) + '%' : '') +
           (d.loss ? ' · 主要失分：' + esc(d.loss) : '') +
         '</span>' +
         '</div>';
@@ -6027,7 +6084,7 @@ const App = (() => {
     Storage.resetDifficultyFactors();
     renderDifficultyRows();
     const status = $('set-diff-status');
-    if (status) status.textContent = '已恢复为 LongCat-2.5 分析的默认系数';
+    if (status) status.textContent = '已恢复为默认系数（手工设定的粗略起点）';
     toast('已恢复默认系数', 'success');
   }
 
@@ -6104,6 +6161,86 @@ const App = (() => {
     }
   }
 
+  /**
+   * ★ 2026-11-07 修（外部审计 P1-4）：把「停用」真正落到 UI，不只是写句声明。
+   *
+   * 之前设置页写着「估分 / 高考倒计时 / 教材进度等模块会停用」，
+   * 实测韩国模式下「还要多少数据才能估分」「教材进度」照样显示、
+   * 科目名还是中文 —— 文案说支持了，实际只换了层皮。
+   *
+   * 现在按 Region.profile().disabledModules 统一给对应卡片加隐藏 + 明确角标，
+   * 并重建所有科目下拉（ иначе 旧选项会残留在 DOM 里）。
+   */
+  const REGION_GATED = [
+    { id: 'readiness-card', when: '总分预估', label: '还要多少数据才能估分' },
+    { id: 'gaokao-bar-card', when: '高考进度条', label: '高考进度条' },
+  ];
+
+  function applyRegionGating() {
+    if (typeof Region === 'undefined') return;
+    const p = Region.profile();
+    const disabled = p.disabledModules || [];
+    const off = (m) => disabled.indexOf(m) >= 0;
+
+    // ① 卡片：隐藏并留一个「本制度不适用」的说明，而不是凭空消失
+    REGION_GATED.forEach(g => {
+      const el = $(g.id);
+      if (!el) return;
+      const hide = off(g.when);
+      el.classList.toggle('region-disabled', hide);
+      el.style.display = hide ? 'none' : '';
+      let badge = document.getElementById(g.id + '-region-note');
+      if (hide) {
+        if (!badge) {
+          badge = document.createElement('div');
+          badge.id = g.id + '-region-note';
+          badge.className = 'hint';
+          badge.style.cssText = 'margin:8px 0;padding:8px;border-left:3px solid var(--amber)';
+          el.parentNode && el.parentNode.insertBefore(badge, el);
+        }
+        badge.textContent = '「' + g.label + '」仅适用于中国大陆高考，当前制度（' + p.label + '）下已停用。' +
+          '本软件的估分模型、教材库与倒计时没有日韩本土数据，不拿中国系数假装适用。';
+        badge.style.display = '';
+      } else if (badge) badge.style.display = 'none';
+    });
+
+    // ② 教材进度卡片（有标题但无稳定 id，用文本匹配定位）
+    if (off('高考进度条') || off('总分预估')) {
+      document.querySelectorAll('#page-progress .card, #page-import .card').forEach(card => {
+        const h = card.querySelector('h3');
+        if (!h || h.textContent.indexOf('教材进度') < 0) return;
+        card.style.display = 'none';
+        card.classList.add('region-disabled');
+      });
+    } else {
+      document.querySelectorAll('.card.region-disabled').forEach(c => {
+        if (!REGION_GATED.some(g => g.id === c.id)) { c.style.display = ''; c.classList.remove('region-disabled'); }
+      });
+    }
+
+    // ③ 重建科目下拉：先清空带「中文科目」的选项再重填
+    try {
+      const ids = ['q-subject', 'photo-subject', 'course-subject', 'p-subject', 'ls-subject'];
+      const subs = allSixSubjects();
+      ids.forEach(id => {
+        const sel = $(id);
+        if (!sel) return;
+        const withAuto = (id === 'photo-subject' || id === 'course-subject' || id === 'p-subject');
+        // 只重建「选项都是科目」的下拉，避免误伤带自定义项的
+        const old = Array.from(sel.options).map(o => o.value).filter(Boolean);
+        const looksLikeSubjects = old.length === 0 || old.every(v => v === 'auto' || /[\u4e00-\u9fa5]/.test(v) || /[ぁ-んァ-ヶ가-힣]/.test(v));
+        if (!looksLikeSubjects) return;
+        sel.innerHTML = '';
+        if (withAuto) {
+          const a = document.createElement('option'); a.value = 'auto'; a.textContent = '自动（按薄弱点）'; sel.appendChild(a);
+        }
+        subs.forEach(s => {
+          const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o);
+        });
+      });
+    } catch (e) {}
+  }
+
   function onRegionChange() {
     if (typeof Region === 'undefined') return;
     const v = ($('set-region') || {}).value || 'cn-gaokao';
@@ -6113,6 +6250,11 @@ const App = (() => {
       I18n.set(Region.profile().lang);
     }
     syncRegionUI();
+    applyRegionGating();
+    // 制度变了 → 预计算缓存里的科目/知识点全过期，必须失效重算
+    try { if (typeof ModelCache !== 'undefined') ModelCache.invalidate(); } catch (e) {}
+    try { if (typeof LessonUI !== 'undefined' && LessonUI.rebuildSubjects) LessonUI.rebuildSubjects(); } catch (e) {}
+    // persona() 每次调用都会读 Region.current()，无需重设 setPersona
     if (typeof toast === 'function') toast('已切换考试制度，AI 会按新制度回答', 'success');
   }
 
@@ -7701,9 +7843,40 @@ const App = (() => {
     })();
 
 
+    /**
+     * ★ 2026-11-07 修（外部审计 P1-7）：
+     * 原来 `window.open('迁移数据.html')` 打开一个根本不存在的页面 → 404。
+     * 现在不新建文件，直接给一段可操作的说明，指向本页已有的
+     * 「导入数据 / 备份恢复」功能，用户点完就能用，不再是死链。
+     */
+    function openMigrationDialog() {
+      const box = document.createElement('div');
+      box.id = 'migration-note';
+      box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);' +
+        'display:flex;align-items:center;justify-content:center;padding:24px';
+      box.innerHTML = '<div style="background:var(--panel,#fff);color:var(--text,#222);border-radius:12px;' +
+        'max-width:560px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35)">' +
+        '<h3 style="margin:0 0 10px">把旧版数据搬进来</h3>' +
+        '<div style="line-height:1.8;font-size:13.5px">' +
+        '<p>这个版本没有单独的「迁移向导」页面。请直接用下面两步，效果一样：</p>' +
+        '<p><b>① 旧版导出</b>：在旧版「设置 → 数据备份与恢复」点「导出到文件」，' +
+        '会得到一个 <code>xuetu_backup_*.json</code>。</p>' +
+        '<p><b>② 这里导入</b>：回到本页「数据备份与恢复」，用「恢复这一份」选那个 json；' +
+        '或者用「导入数据」把卷子逐份搬进来。</p>' +
+        '<p class="hint" style="margin-top:10px">备份快照默认存在 <code>userdata/backups/</code>，' +
+        '启动时若检测到本机数据为空，也会自动尝试从最近一份快照恢复。</p>' +
+        '</div>' +
+        '<div style="margin-top:16px;text-align:right">' +
+        '<button class="btn btn-primary" id="migration-close">知道了</button></div></div>';
+      document.body.appendChild(box);
+      const close = () => box.remove();
+      box.querySelector('#migration-close').addEventListener('click', close);
+      box.addEventListener('click', e => { if (e.target === box) close(); });
+    }
+
     // 数据迁移向导（把网页版数据搬进桌面应用）
     on('btn-migrate', 'click', () => {
-      window.open('迁移数据.html', '_blank');
+      openMigrationDialog();
     });
 
     // 显示备份到底存在哪个目录（打包装到 AppData 后用户找不到）
@@ -7799,6 +7972,8 @@ const App = (() => {
     refreshShell();
     updateBadges();
     renderMemoryList();
+    // ★ 2026-11-07：首次启动就按当前 region 隐藏未适配模块（含从磁盘恢复的日韩设置）
+    try { applyRegionGating(); } catch (e) { console.warn('[region] gating 失败', e); }
     // 侧栏胶囊首帧就要在位（否则第一次打开是空白，点一下才出现）
     requestAnimationFrame(() => moveNavIndicator(document.querySelector('.nav-item.active')));
     // 语音服务探测：没接入时课程页会显示「暂未启用」，而不是给个点了没反应的按钮
@@ -7875,4 +8050,27 @@ console.log('[学徒] 初始化完成');
   };
 })();
 
-document.addEventListener('DOMContentLoaded', App.init);
+/**
+ * ★ 2026-11-07 修：启动时先恢复磁盘数据，再初始化界面。
+ *
+ * 外部审计实测「每次重启所有用户数据全丢」：
+ *   electron-main.js 用 server.listen(0) 随机端口，localStorage 按
+ *   origin（含端口）隔离，端口一变就是全新存储。而 Storage.restoreFromDisk()
+ *   虽然写了，却从来没有在启动时被调用过。
+ *
+ * 现在 main 侧已改固定端口（治本），这里再补一道恢复（兜底 + 老用户数据）：
+ *   DOMContentLoaded → await Storage.autoRestore() → App.init()
+ * 恢复是磁盘 IO，通常 <10ms；即便失败也 catch 住，绝不阻塞启动。
+ */
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    if (typeof Storage !== 'undefined' && typeof Storage.autoRestore === 'function') {
+      const r = await Storage.autoRestore();
+      if (r && r.restored) console.log('[app] 启动恢复：' + r.restored + ' 项（' + r.source + '）');
+    }
+  } catch (e) {
+    console.warn('[app] 启动恢复失败（不影响使用）:', e && e.message);
+  }
+  try { App.init(); }
+  catch (e) { console.error('[app] init 失败:', e); }
+});

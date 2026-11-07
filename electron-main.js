@@ -198,14 +198,73 @@ function startServer() {
       if (pathname.startsWith('/api/')) return handleApi(req, res, pathname);
       return serveStatic(req, res, pathname);
     });
-    // 端口 0 = 让系统分配空闲端口，避免和 python server.py 抢
-    server.listen(0, '127.0.0.1', () => {
-      resolve({ server, port: server.address().port });
-    });
-    server.on('error', e => {
-      console.error('[server] 启动失败:', e);
-      resolve({ server: null, port: null });
-    });
+
+    /**
+     * ★ 2026-11-07 修：端口必须固定，否则每次启动 origin 都变。
+     *
+     * 原来的 `server.listen(0)` 让系统分配随机端口（注释说「避免和
+     * python server.py 抢」）。但 localStorage 是按 **origin（含端口）**
+     * 隔离的：端口一变，浏览器就认为是一个全新的站点，所有用户数据
+     * （设置、错题、记忆、作息、制度）全部「消失」。外部审计实测
+     * 每次启动端口 50932→60955→59069→59639，数据归零。
+     *
+     * 现在把端口写进 userData/port.json，只分配一次、之后永远复用：
+     *   · 首次启动：从 50932 起试，被占用就 +1，找到空闲端口后落盘
+     *   · 后续启动：直接读回同一个端口 → origin 稳定 → localStorage 不丢
+     *   · 万一落盘的端口被别的程序占了，仍自动往后找一个并更新记录
+     *     （这种极少见；真发生了，下面还有磁盘镜像 + 备份自动恢复兜底）
+     */
+    const portFile = path.join(app.getPath('userData'), 'port.json');
+    const BASE_PORT = 50932;
+    const MAX_TRY = 50;
+
+    function readSavedPort() {
+      try {
+        const j = JSON.parse(fs.readFileSync(portFile, 'utf8'));
+        const p = Number(j && j.port);
+        return Number.isInteger(p) && p > 0 && p < 65536 ? p : null;
+      } catch (e) { return null; }
+    }
+    function savePort(p) {
+      try {
+        fs.mkdirSync(path.dirname(portFile), { recursive: true });
+        fs.writeFileSync(portFile, JSON.stringify({ port: p, savedAt: new Date().toISOString() }, null, 2), 'utf8');
+      } catch (e) { console.error('[server] 端口落盘失败:', e.message); }
+    }
+
+    const candidates = [];
+    const saved = readSavedPort();
+    if (saved) candidates.push(saved);              // 优先复用上次的
+    for (let i = 0; i < MAX_TRY; i++) {
+      const p = BASE_PORT + i;
+      if (p !== saved) candidates.push(p);
+    }
+
+    let idx = 0;
+    const tryNext = () => {
+      if (idx >= candidates.length) {
+        console.error('[server] 没有可用端口，回退到随机端口');
+        server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+        return;
+      }
+      const p = candidates[idx++];
+      const onError = (e) => {
+        server.removeListener('listening', onListening);
+        if (e && e.code === 'EADDRINUSE') { tryNext(); return; }
+        console.error('[server] 启动失败:', e);
+        resolve({ server: null, port: null });
+      };
+      const onListening = () => {
+        server.removeListener('error', onError);
+        savePort(p);
+        console.log('[server] 固定端口 ' + p + (saved === p ? '（复用）' : '（新分配并落盘）'));
+        resolve({ server, port: p });
+      };
+      server.once('error', onError);
+      server.once('listening', onListening);
+      server.listen(p, '127.0.0.1');
+    };
+    tryNext();
   });
 }
 

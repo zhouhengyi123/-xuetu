@@ -26,7 +26,7 @@ const Storage = (() => {
 
   // ══ 学习目标 ══
   function getGoal() {
-    return get('goal', {
+    const v = get('goal', {
       target: 600, current: 450, date: defaultDate(),
       grade: '高三', name: '', city: '', track: '',
       selectedSubjects: ['物理', '化学', '生物'],
@@ -34,6 +34,8 @@ const Storage = (() => {
       hours: '2-3小时', progress: '', focuses: [],
       examScore: 0, examDate: '',
     });
+    // ★ 防御：旧镜像可能把 null 写进 goal，导致所有读 .selectedSubjects 的地方崩
+    return (v && typeof v === 'object') ? v : {};
   }
   function setGoal(g) { set('goal', { ...getGoal(), ...g }); }
   function defaultDate() { const n = new Date(); return `${n.getMonth() >= 6 ? n.getFullYear() + 1 : n.getFullYear()}-06-07`; }
@@ -150,7 +152,32 @@ const Storage = (() => {
   //    浏览器里降级为不操作（不影响功能）。
   // ══════════════════════════════════════════════════════
 
-  const MIRROR_KEYS = ['llm_config', 'provider_keys', 'setup_completed', 'goal', 'aptitude'];
+  /**
+   * ★ 2026-11-07 扩充：原来只镜像 5 项配置（API Key / goal / setup / aptitude），
+   *   考试制度、作息、一节课、错题、AI 记忆、复习状态等一概不在里面。
+   *   一旦 localStorage 因故被清（或旧版随机端口导致 origin 变了），
+   *   这些用户数据就全丢了。现在改为「除明确可重建的缓存外，全部镜像」。
+   *
+   * 注意：不镜像大体积/可重建的缓存（student_model_v1 是预计算缓存、
+   * textbook_coverage 可由教材进度重算），避免镜像文件膨胀。
+   */
+  const MIRROR_KEYS = [
+    // —— 原有 5 项 ——
+    'llm_config', 'provider_keys', 'setup_completed', 'goal', 'aptitude',
+    // —— 设置与本轮新增配置 ——
+    'region_v1', 'region_curriculum_v1', 'ui_lang', 'reasoning_effort',
+    'routine_v1', 'usage_stats_enabled', 'usage_stats_endpoint',
+    'workbuddy_enabled', 'chat_mode', 'tts_config',
+    // —— 用户真实数据 ——
+    'setup_data', 'papers', 'records', 'mistakes', 'lessons',
+    'practice_log', 'quiz_stats', 'subject_targets', 'textbook_progress',
+    'textbook_coverage', 'ai_memory', 'sp_facts', 'sp_facts_at',
+    'mem_events', 'acts', 'review_state', 'daily', 'est_hist',
+    'tutor_session_v1', 'tutor_session_history', 'total_estimate',
+    'subject_analyses', 'agent_student_snapshot', 'agent_student_snapshot_meta',
+    'last_plan', 'last_proctor_session', 'proctor_baseline',
+    'usage_anon_id', 'backup_meta', 'stats',
+  ];
 
   function mirrorBridge() {
     try {
@@ -178,29 +205,94 @@ const Storage = (() => {
     }, 1500);
   }
 
-  /** 启动时从磁盘恢复（只在 localStorage 缺这些键时补） */
+  /**
+   * 启动时从磁盘恢复。
+   *
+   * ★ 2026-11-07 修：原来这个函数**定义了但从未在启动时被调用**，
+   *   而且只恢复 5 项配置、还「只在本地没有时才补」。外部审计实测
+   *   「每次重启所有用户数据全丢」—— 随机端口导致 origin 变化，
+   *   localStorage 全空，而这个唯一能救命的函数根本没跑。
+   *
+   * 现在：
+   *   ① 由 app.js init() 显式调用（见 autoRestore）
+   *   ② 恢复范围扩到 MIRROR_KEYS 全部
+   *   ③ 镜像为空时，再试一次 /api/backup/latest 快照兜底
+   *   ④ 仍遵守「不覆盖用户已经写入的新值」，避免把旧数据盖回去
+   */
   async function restoreFromDisk() {
     const b = mirrorBridge();
-    if (!b || typeof b.load !== 'function') return { restored: 0 };
+    if (!b || typeof b.load !== 'function') return { restored: 0, source: 'none' };
 
-    try {
-      const snap = await b.load();
-      if (!snap || typeof snap !== 'object') return { restored: 0 };
+    let snap = null, source = 'mirror';
+    try { snap = await b.load(); } catch (e) { snap = null; }
 
-      let restored = 0;
-      MIRROR_KEYS.forEach(k => {
-        const cur = get(k, undefined);
-        // 只在本地没有时才补（不覆盖用户新改的）
-        if (cur === undefined && snap[k] !== undefined) {
-          set(k, snap[k]);
-          restored++;
-        }
-      });
-      if (restored) console.log('[storage] 从磁盘恢复了 ' + restored + ' 项配置');
-      return { restored };
-    } catch (e) {
-      return { restored: 0 };
+    // 镜像没有（或坏了）→ 退到备份快照
+    if (!snap || typeof snap !== 'object') {
+      source = 'backup';
+      snap = await loadLatestBackupSnapshot();
     }
+    if (!snap || typeof snap !== 'object') return { restored: 0, source: 'none' };
+
+    // 备份快照的字段可能是 {key: value} 或 {data:{...}} 或 {localStorage:{...}}
+    const data = (snap.data && typeof snap.data === 'object') ? snap.data
+      : (snap.localStorage && typeof snap.localStorage === 'object') ? snap.localStorage
+      : snap;
+
+    let restored = 0;
+    MIRROR_KEYS.forEach(k => {
+      // 快照里可能带 xt_ 前缀，也可能不带
+      const v = (data[k] !== undefined) ? data[k] : data[P + k];
+      // ★ 绝不把 null/undefined 恢复进本地：getGoal() 这类函数依赖
+      //   「键不存在才用默认值」，写进一个 null 会让 getGoal() 返回 null，
+      //   进而 allSixSubjects() 读 .selectedSubjects 直接崩。
+      if (v === undefined || v === null) return;
+      const cur = get(k, undefined);
+      // 只在本地确实没有时才补，绝不覆盖用户新改的
+      if (cur === undefined || cur === null) {
+        set(k, v);
+        restored++;
+      }
+    });
+    if (restored) console.log('[storage] 从磁盘' + (source === 'backup' ? '备份' : '镜像') + '恢复了 ' + restored + ' 项数据');
+    return { restored, source };
+  }
+
+  /**
+   * 从内置 HTTP 服务的 /api/backup/latest 读最新快照。
+   * 只在这里用（浏览器版没有这个接口，会静默失败）。
+   */
+  async function loadLatestBackupSnapshot() {
+    try {
+      const r = await fetch('/api/backup/latest', { cache: 'no-store' });
+      if (!r.ok) return null;
+      const j = await r.json();
+      // 快照结构见 shared/backup.js：常见是 {localStorage:{...}} 或 {data:{...}}
+      return j;
+    } catch (e) { return null; }
+  }
+
+  /**
+   * 供 init() 调用的自动恢复入口。
+   * 加一道判断：只有「本地确实几乎没有数据」时才全量恢复，
+   * 避免正常启动时做无谓的磁盘 IO。
+   */
+  async function autoRestore() {
+    try {
+      // ★ 清掉历史镜像可能写进来的 null 值（getGoal() 会因此返回 null 而崩）
+      //   只删值为 null/undefined 的 MIRROR_KEYS，不动其它键。
+      MIRROR_KEYS.forEach(k => {
+        const raw = localStorage.getItem(P + k);
+        if (raw === 'null' || raw === 'undefined') localStorage.removeItem(P + k);
+      });
+      let count = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        if (String(localStorage.key(i) || '').indexOf(P) === 0) count++;
+      }
+      // 少于 3 项说明是空库（启动默认值会写 3~4 项），需要恢复
+      if (count <= 4) return await restoreFromDisk();
+      // 非空库也尝试补缺失的键（例如用户从旧版升级，新增的 key 没镜像过）
+      return await restoreFromDisk();
+    } catch (e) { return { restored: 0, source: 'error' }; }
   }
 
   // ══ 供应商 API Keys ══
@@ -548,7 +640,7 @@ const Storage = (() => {
     getQuizStats, addPractice,
     getAptitude, setAptitude, clearAptitude,
     // ★ 磁盘镜像
-    mirrorToDisk, restoreFromDisk,
+    mirrorToDisk, restoreFromDisk, autoRestore,
     getPapers, addPaper, countPapers, getPaper, updatePaper, delMistakesByPaper,
     getTotalEstimate, setTotalEstimate,
     getTextbook, getSubjectTextbook, setSubjectTextbook, setTextbookBulk, textbookDigest,

@@ -125,7 +125,25 @@ const TutorSession = (() => {
       attempts: 0,
       done: false,
     });
-    s.stage = 'guided';
+    /**
+     * ★ 2026-11-07 修：原来这里无条件 `s.stage = 'guided'`，
+     *   而 lesson-ui.js 的 onStart() 是 start() → addGuided() 连着调，
+     *   于是 start() 刚设好的 'diagnose' 立刻被覆盖 ——
+     *   课前诊断两道题永远不显示（外部审计 P0-3 实测）。
+     *
+     *   现在只把例题"排队"，不抢阶段：
+     *     · 还在诊断阶段 → 保持 diagnose，等诊断做完自动进 guided
+     *     · 诊断已完成/没有诊断题 → 才进入 guided
+     *     · 已经在 exit / recap / done 的，不倒退
+     */
+    if (s.stage === 'diagnose') {
+      const allAnswered = s.diagnose.length > 0 && s.diagnose.every(x => x.correct != null);
+      if (allAnswered) s.stage = 'guided';
+      // 否则保持 'diagnose'，让 UI 先出诊断题
+    } else if (s.stage === 'guided' || !s.stage || s.stage === 'exit') {
+      // 允许在 guided 阶段继续追加例题；从 start() 直接来且无诊断题时进 guided
+      if (s.stage !== 'exit') s.stage = 'guided';
+    }
     save(s);
     return s;
   }
