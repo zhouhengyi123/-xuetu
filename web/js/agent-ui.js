@@ -325,19 +325,24 @@ const AgentUI = (() => {
       const path = ws.path.replace(/\\/g, '/') + '/.student-data.json';
       const content = JSON.stringify(snap, null, 2);
 
-      // 用 write_file 工具写（走安全边界）
-      const r = await bridgeObj.run({
-        apiKey: 'noop',   // 不真的调模型
-        model: 'none',
-        messages: [{ role: 'user', content: 'x' }],
-      });
-
-      // 上面这条路会真的调模型，不合适 —— 改用直接写
-      // 通过 agent:open 不行，得有个写文件的通道
-      // 简单办法：用 Tools 的 write_file，但需要 IPC。
-      // 这里改为：存进 localStorage，让用户下载。
+      /**
+       * ★ 2026-11-07 修：删掉这里原来的一段死代码
+       *
+       * 旧版为了「拿一个写文件的通道」，调了一次 bridgeObj.run({
+       *   apiKey:'noop', model:'none', messages:[{content:'x'}] })。
+       * 注释自己都写着「这条路会真的调模型，不合适」——
+       * 但它确实会发一次无意义的模型请求（浪费额度、还可能在没配 Key 时报错），
+       * 而它的返回值 r 根本没被用到，文件也没真写进工作区。
+       *
+       * 现在直接走下面两条真实通路：
+       *   ① localStorage（agent_student_snapshot，Agent 工具可经 IPC 读取）
+       *   ② DTSync 同步到 DeepTutor
+       * 不再发那次假请求。
+       */
       if (typeof Storage !== 'undefined') {
         Storage.set('agent_student_snapshot', snap);
+        // 同时留一份带路径的元信息，方便「查看生成的文件」定位
+        Storage.set('agent_student_snapshot_meta', { path, bytes: content.length, at: snap.syncedAt });
       }
 
       // 同时同步到 DeepTutor

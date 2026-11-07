@@ -18,19 +18,84 @@
  *   ④ 反复错的题标记为"需要补课"
  *
  * ══════════════════════════════════════════════════════════════
- * 复习间隔（简化版 SM-2）
+ * ★ 2026-11-07 改：复习间隔不再用固定 [1,3,7,16,35] 表
  * ══════════════════════════════════════════════════════════════
- *   第 1 次做对  → 1 天后复习
- *   第 2 次做对  → 3 天后
- *   第 3 次做对  → 7 天后
- *   第 4 次做对  → 16 天后
- *   第 5 次做对  → 35 天后 → 标记"已掌握"
- *   做错         → 重置到第 1 档（1 天后）
+ * 教学法调研（Cepeda 2006 元分析 / Cepeda 2008 1350 人）：
+ *   最优复习间隔**随距考试时长增长**：
+ *     距考 7 / 35 / 70 / 350 天 → 最优间隔约 3 / 8 / 12 / 27 天。
+ *   固定艾宾浩斯表在长备考周期上效率很低（艾宾浩斯曲线本身是
+ *   无意义音节的遗忘，不是错题复习日程表）。
+ *
+ * 现在按「考试日」反推基准间隔，再按连续做对次数缩放。
+ * 没有考试日期时退回原固定阶梯（不编造）。
+ *
+ * 另一条同样重要：错题重现必须是**变式重做**（Dunlosky 2013
+ * practice testing 高效用，重读/划线低效用）。recordAttempt 的
+ * 'read' 分支不推进等级，就是在执行这条。
  */
 const Review = (() => {
 
-  // 复习间隔阶梯（天）
+  // 旧的固定阶梯（仅作为无考试日期时的兜底）
   const INTERVALS = [1, 3, 7, 16, 35];
+
+  /**
+   * Cepeda 2008 的实测锚点：距考天数 → 最优间隔（天）。
+   * 这里只存「结构理解用」的锚点，不冒充精确公式。
+   */
+  const CEPEDA_ANCHORS = [
+    { daysToExam: 7, gap: 3 },
+    { daysToExam: 35, gap: 8 },
+    { daysToExam: 70, gap: 12 },
+    { daysToExam: 350, gap: 27 },
+  ];
+
+  /** 按距考试天数插值出基准间隔 */
+  function spacingForExam() {
+    let d = null;
+    try {
+      const g = Storage.getGoal();
+      const dateStr = g.examDate || (g.examYear ? g.examYear + '-06-07' : null);
+      if (dateStr) {
+        const days = Math.ceil((new Date(dateStr) - Date.now()) / 86400000);
+        if (isFinite(days) && days > 0) d = days;
+      }
+      // 日韩 region 用各自的考试节点（取最近一个）
+      if (d == null && typeof Region !== 'undefined' && Region.current() !== 'cn-gaokao') {
+        const p = Region.profile();
+        const now = new Date();
+        let best = Infinity;
+        (p.examDates || []).forEach(e => {
+          const y = now.getFullYear() + (e.month < now.getMonth() ? 1 : 0);
+          const t = new Date(y, e.month - 1, e.day || 15).getTime();
+          const dd = Math.ceil((t - now.getTime()) / 86400000);
+          if (dd > 0 && dd < best) best = dd;
+        });
+        if (isFinite(best) && best < 400) d = best;
+      }
+    } catch (e) {}
+    if (d == null) return null;              // 没考试日 → 不编造
+
+    // 分段线性插值，两端钳制
+    const A = CEPEDA_ANCHORS;
+    if (d <= A[0].daysToExam) return A[0].gap;
+    if (d >= A[A.length - 1].daysToExam) return A[A.length - 1].gap;
+    for (let i = 0; i < A.length - 1; i++) {
+      if (d >= A[i].daysToExam && d <= A[i + 1].daysToExam) {
+        const t = (d - A[i].daysToExam) / (A[i + 1].daysToExam - A[i].daysToExam);
+        return Math.round(A[i].gap + t * (A[i + 1].gap - A[i].gap));
+      }
+    }
+    return 8;
+  }
+
+  /** 本次该隔几天再复习（level = 连续做对次数） */
+  function nextIntervalDays(level) {
+    const base = spacingForExam();
+    if (base == null) return INTERVALS[Math.min(level, INTERVALS.length - 1)] || 1;
+    // 按掌握程度缩放：首次约 0.5×基准，逐级递增到 2×，并留 1 天下限
+    const scale = 0.5 + 0.3 * Math.min(level, 5);
+    return Math.max(1, Math.round(base * scale));
+  }
 
   // 掌握所需连续正确次数
   const MASTER_LEVEL = 5;
@@ -226,7 +291,8 @@ const Review = (() => {
         st.mastered = true;
         st.nextAt = null;
       } else {
-        const days = INTERVALS[Math.min(st.level, INTERVALS.length - 1)] || 1;
+        // ★ 2026-11-07：按距考试日动态反推（Cepeda 2008），不再查固定表
+        const days = nextIntervalDays(st.level);
         st.nextAt = new Date(now + days * 24 * 3600 * 1000).toISOString();
       }
 
@@ -360,7 +426,8 @@ const Review = (() => {
   }
 
   return {
-    INTERVALS, MASTER_LEVEL,
+    INTERVALS, MASTER_LEVEL, CEPEDA_ANCHORS,
+    spacingForExam, nextIntervalDays,
     dueToday, stats, recordAttempt,
     masteryLabel, nextLabel,
     filter, subjects, knowledgePoints,

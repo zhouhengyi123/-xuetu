@@ -3,6 +3,36 @@
  * 供应商: OpenAI / DeepSeek / Anthropic / 千问 / Kimi / 智谱 / LongCat / 自定义
  */
 const LLM = (() => {
+
+  /**
+   * ★ 2026-11-07：全局反馈文案规范（教学法调研 P1）
+   *
+   * 依据：Kluger & DeNisi 1996（607 效应量，>1/3 反馈反而降低绩效，
+   * 表扬 d=-0.17）；Wisniewski/Zierer/Hattie 2020（信息含量是核心，
+   * self 层反馈最差）；Henderlong & Lepper 2002（process praise > person praise）；
+   * Hattie & Timperley 2007（feed-up → feed-back → feed-forward）；
+   * Chi 2001（长篇解释只带来浅层学习，reflection 才与深层理解相关）；
+   * INSPIRE（间接纠错、不说「错」、让学生反思复述）。
+   *
+   * 这段会被追加到所有「会直接写给学生看」的 system prompt，
+   * 抑制 LLM 天然的长篇讲透 + 空洞表扬倾向。
+   */
+  const FEEDBACK_RULES = [
+
+    '【反馈与讲解规范（必须遵守）】',
+    '1. 反馈模板 = 事实 + 定位 + 下一步动作。例：「第 2 步把 f\'(x)>0 当成了 f(x)>0，回到导数符号决定增减再试一次」。',
+    '2. 禁止「太棒了/你真聪明/加油/继续加油」等指向人的表扬，禁止排名、「超过 X% 的同学」、连续打卡奖励。',
+    '3. 纠错用间接提问（「若 x<0，这一步还成立吗？」），不要红叉羞辱；把挫折归因到题目难度与可控策略，保护信心但不空洞安慰。',
+    '4. 解析限字：先给关键错步与正确思路，别写长篇「讲透」；留一句让学生自己归纳/复述，长解释只带来浅层学习。',
+    '5. 每节结尾让学生用一句话写出「卡在哪一步 / 这步为什么」，不要问「听懂了吗」（学困生最容易说懂了）。',
+    '6. 不因某天没学、专注度低而下调「现在水平」；过程信号只用于节奏建议。',
+  ].join('\n');
+
+  /** 给 system 文案追加反馈规范（中文源，其他 region 由 I18n 管输出语言） */
+  function withFeedbackRules(systemText) {
+    if (!systemText) return FEEDBACK_RULES;
+    return String(systemText) + '\n\n' + FEEDBACK_RULES;
+  }
   // ══ 供应商配置（最新模型名称） ══
   const PROVIDERS = {
     openai: {
@@ -435,10 +465,32 @@ const LLM = (() => {
       body.response_format = opts.response_format;
     }
 
-    // 供应商专属顶层字段（龙猫的 thinking 开关走这里）
-    // 默认关闭思考：读图 / 抽 JSON 要的是稳定和速度，而且龙猫思考串会挤占输出预算。
+    /**
+     * ★ 2026-11-07：思考强度（用户要求「调整思考强度」）
+     *
+     * 审计结论：当前 PROVIDERS 里**没有任何 provider 登记真正的
+     * reasoning_effort**（OpenAI o 系列 / Claude extended thinking / GLM 思考预算
+     * 都没接），只有 LongCat 有一个 `thinking: {enabled|disabled}` 布尔开关。
+     * 所以做不出「低/中/高」三档，只能做「开 / 关」+「预算档位」。
+     *
+     * 这里实现两件确实可控的事：
+     *   ① thinking 开关：high → 打开（若 provider 支持），low/off → 关闭
+     *   ② 思考预算：high 时给推理模型留出更多 max_tokens
+     *      （reasoning_content 与正文共用预算，见 :400-409 的旧坑）
+     *
+     * 明确不做：不伪造 `reasoning_effort` 字段发给不支持的供应商
+     * （会被服务端拒绝或忽略，属于假装实现了）。
+     */
+    const effort = String(opts.reasoningEffort || '').toLowerCase();
+    const thinkingOn = (effort === 'high' || effort === 'on' || opts.thinking === true);
     if (typeof p.thinkingBody === 'function' && !p.isAnthropic) {
-      Object.assign(body, p.thinkingBody(opts.thinking === true));
+      Object.assign(body, p.thinkingBody(thinkingOn));
+    } else if (p.reasoningBody && !p.isAnthropic) {
+      // 未来若有供应商登记了 effort 档位，从这里透传
+      Object.assign(body, p.reasoningBody(effort));
+    }
+    if (effort === 'high' && maxTokens < 6000) {
+      body.max_tokens = 6000;   // 给思考留预算，避免正文被截断
     }
 
     // CORS proxy support
@@ -546,8 +598,30 @@ const LLM = (() => {
   /** 只取文本；并记录 finish_reason 供上层判断是否被截断 */
   let lastMeta = { finishReason: null, model: null, usage: null, truncated: false, at: 0 };
 
+  /**
+   * 把反馈规范追加到「面向学生」的 system 上。
+   *
+   * 只对含教学语义的 system 生效；纯抽取/判分/诊断类的 JSON 调用
+   * （例如把教材口语折算成覆盖率）不追加，避免干扰结构化输出。
+   */
+  const TEACHING_SYSTEM_MARKERS = ['老师', '学生', '讲解', '解题', '批改', '反馈', '规划', '课程', '辅导', '出题', '学'];
+  function attachFeedbackRules(messages) {
+    if (!Array.isArray(messages)) return messages;
+    return messages.map(m => {
+      if (!m || m.role !== 'system' || typeof m.content !== 'string') return m;
+      const hasTeaching = TEACHING_SYSTEM_MARKERS.some(k => m.content.indexOf(k) >= 0);
+      // 纯 JSON 抽取：要求返回固定 JSON schema 且不面向学生展示 → 不追加
+      const isPureExtraction = /返回 JSON|请以纯 JSON|response_format/.test(m.content) &&
+        !/学生|讲解|反馈|规划/.test(m.content);
+      if (hasTeaching && !isPureExtraction && m.content.indexOf(FEEDBACK_RULES.slice(0, 10)) < 0) {
+        return Object.assign({}, m, { content: withFeedbackRules(m.content) });
+      }
+      return m;
+    });
+  }
+
   async function chat(messages, opts = {}) {
-    const r = await chatRaw(messages, opts);
+    const r = await chatRaw(attachFeedbackRules(messages), opts);
 
     /**
      * ★ WorkBuddy 分支（2026-10-17 修）
@@ -687,6 +761,7 @@ const LLM = (() => {
   async function generateStudyPlan({
     hours, subjects, weaknesses, goal, current, examDate,
     focusSubject, intensity, intensityHint,
+    todayDay, todayMinutes, todayNote, routinePrompt,
   }) {
     const days = examDate ? Math.max(1, Math.ceil((new Date(examDate) - new Date()) / 86400000)) : 180;
 
@@ -695,6 +770,21 @@ const LLM = (() => {
       : '';
 
     const intensityLine = intensityHint ? `\n【强度偏好】${intensityHint}` : '';
+
+    /**
+     * ★ 2026-11-07：作息节奏
+     *
+     * 原来只有「每日 Xh」一个标量，AI 不知道今天星期几、是不是住校、
+     * 今晚是不是只有晚自习两小时。现在把用户自己设定的作息原样传进去。
+     * 没设置作息时不注入这一段（不编造），保持原来的通用行为。
+     */
+    const routineLine = routinePrompt ? '\n' + routinePrompt : '';
+    const todayLine = todayDay
+      ? `\n【今天】${todayDay}${todayNote ? '（' + todayNote + '）' : ''}，可用 ${todayMinutes || Math.round(hours * 60)} 分钟。只排今天能完成的任务，不要排超过这个时长。`
+      : '';
+    const routineSystem = routinePrompt
+      ? '\n· 学生设了作息时，一周各天的任务量必须按对应日的可用分钟变化，标为「不安排」的日子不要排任务；不要七天平均分配。'
+      : '';
 
     return await chatJSON([{
       role: 'system',
@@ -707,10 +797,10 @@ const LLM = (() => {
 · 每个任务的 task 要具体可执行（如"做 8 道导数求导题"，不要写"练习数学"）；
 · action 字段写清楚学生点开这个任务该做什么，用下面四种之一：
     "开始课程：<课程主题>" / "重做错题：<知识点>" / "做练习：<题量>" / "复习：<内容>"
-· 有薄弱点时，薄弱点优先；`,
+· 有薄弱点时，薄弱点优先；` + routineSystem,
     }, {
       role: 'user',
-      content: `每日${hours}h。科目:${subjects.join('、')}。薄弱:${weaknesses.map(w => w.name).join('、') || '无'}。目标:${goal}分。当前:${current}分。距高考:${days}天` + focusLine + intensityLine,
+      content: `每日${hours}h。科目:${subjects.join('、')}。薄弱:${weaknesses.map(w => w.name).join('、') || '无'}。目标:${goal}分。当前:${current}分。距高考:${days}天` + focusLine + intensityLine + todayLine + routineLine,
     }], { maxTokens: 3000 });
   }
 

@@ -8,7 +8,23 @@ const Planner = (() => {
   async function generateDailyPlan(settings) {
     var goal = Storage.getGoal();
     var weak = await ProgressEngine.analyzeWeakness(Storage.getRecords(), Storage.getMistakes());
-    var totalMin = settings.hours * 60;
+
+    /**
+     * ★ 2026-11-07：接入作息（住校 / 走读）
+     *
+     * 原来 `totalMin = settings.hours * 60` 假设「每天都一样多时间」，
+     * 对住宿生不成立（周五离校、周日返校、晚自习时段都不同）。
+     * 现在：用户设了作息 → 用「今天」的可用分钟；没设 → 保留原来的 hours 兜底。
+     * 作息由用户自己选/自己改，我们不内置一套「标准住校生作息」冒充事实。
+     */
+    var routine = (typeof Routine !== 'undefined' && Routine.isConfigured())
+      ? Routine.forUI() : null;
+    var dow = (new Date().getDay() + 6) % 7;             // 0=周一
+    var routineMin = routine ? Routine.minutesFor(dow) : null;
+    var totalMin = (routineMin != null && routineMin > 0) ? routineMin : (settings.hours * 60);
+    var todayDay = Routine ? Routine.DAYS[dow] : '';
+    var todayNote = (routine && routine.week && routine.week[dow]) ? (routine.week[dow].note || '') : '';
+    var routinePrompt = (typeof Routine !== 'undefined') ? Routine.promptBlock() : '';
 
     /**
      * ★ 把用户的真实选择传下去（2026-10-24 修）
@@ -42,6 +58,12 @@ const Planner = (() => {
         focusSubject: focusSubject,
         intensity: intensity,
         intensityHint: intensityHint,
+
+        // ★ 2026-11-07：作息节奏（真实由用户提供，不是我们编的）
+        todayDay: todayDay,
+        todayMinutes: totalMin,
+        todayNote: todayNote,
+        routinePrompt: routinePrompt,
       });
 
       if (plan.dailyPlan) {

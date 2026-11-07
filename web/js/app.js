@@ -112,6 +112,21 @@ const App = (() => {
     L.push('- 目标：' + (d.targetSchool || '未定') + ' / ' + (g.target || '--') + ' 分');
     if (d.focuses && d.focuses.length) L.push('- 想提升的方面：' + d.focuses.join('、'));
 
+    /**
+     * ★ 2026-11-07：考试制度注入
+     *
+     * 原来 persona() 写死「高考」「人教版」「赋分」「距高考 N 天」。
+     * 日韩用户切换 region 后，所有 AI（问答/出题/规划/估分）必须知道
+     * 当前是共通テスト / 수능，不能拿中国高考框架回答。
+     * 中国 region 返回空串 → 行为与原来完全一致。
+     */
+    try {
+      if (typeof Region !== 'undefined') {
+        const rb = Region.promptBlock();
+        if (rb) { L.push(''); L.push(rb); }
+      }
+    } catch (e) {}
+
     // 教材进度：让所有模块（答疑/规划/出题/估算）都知道他学到哪儿了
     const tb = Storage.textbookDigest(allSixSubjects());
     if (tb) {
@@ -263,12 +278,18 @@ const App = (() => {
     } catch (e) {}
 
     try {
+      // ★ 2026-11-07：思考强度（设置页可配，默认 standard）
+      let effort = opts.reasoningEffort;
+      if (!effort) {
+        try { effort = Storage.get('reasoning_effort', 'standard'); } catch (e) { effort = 'standard'; }
+      }
       return await LLM.chat([{ role: 'user', content: userInput }], {
         maxTokens: opts.maxTokens || 2500,
         temperature: opts.temperature,
         noPersona: opts.noPersona,
         // ★ 模型透传：AI 助教页选了这个模型就用它（undefined = 自动路由）
         model: opts.model || undefined,
+        reasoningEffort: effort,
       });
     } finally {
       try {
@@ -299,6 +320,7 @@ const App = (() => {
     weakness: { title: '薄弱点', sub: 'AI 归纳的易错知识点' },
     import: { title: '导入试卷', sub: '上传试卷，每科满 5 份做独立分析' },
     teach: { title: '教学资料', sub: '导入你自己的经验与知识点，AI 按需检索使用' },
+    lesson: { title: '一节课', sub: '诊断 → 分步例题 → 出门测 → 一句话复盘' },
     course: { title: '生成课程', sub: '说想学什么 → 生成课 → 一节一节学，随时可打断提问' },
     settings: { title: '设置', sub: '模型接口、记忆与数据' },
   };
@@ -418,10 +440,20 @@ const App = (() => {
       chat: renderChat, photo: renderPhoto, camera: renderCamera,
       progress: renderProgress, weakness: renderWeakness, import: renderImport,
       settings: renderSettings, course: renderCourse,
-      teach: renderTeaching,
+      teach: renderTeaching, lesson: renderLesson,
     }[pageId];
     if (fn) { try { fn(); } catch (e) { console.error('render ' + pageId + ' 失败', e); } }
     updateBadges();
+  }
+
+  /** 一节课（分步辅导）2026-11-07：逻辑在 web/js/lesson-ui.js */
+  function renderLesson() {
+    try {
+      if (typeof LessonUI !== 'undefined' && LessonUI.mount) LessonUI.mount();
+      else if ($('lesson-body')) $('lesson-body').innerHTML = '<div class="empty">分步辅导模块未加载</div>';
+    } catch (e) {
+      if ($('lesson-body')) $('lesson-body').innerHTML = '<div class="empty">分步辅导加载失败：' + esc(e.message) + '</div>';
+    }
   }
 
   /** 教学资料页（2026-11-01）：逻辑在 web/js/teaching-ui.js */
@@ -940,6 +972,37 @@ const App = (() => {
   // ════════════════════════════════════════════════════════════
   //  学习规划
   // ════════════════════════════════════════════════════════════
+  /**
+   * 作息下拉：显示当前配置、切换时应用模板。
+   * 模板只是起点，用户可以之后再改；不设就保持「未设置」，不编造。
+   */
+  function syncRoutineUI() {
+    if (typeof Routine === 'undefined') return;
+    const sel = $('p-routine');
+    const hint = $('p-routine-hint');
+    if (!sel) return;
+    const ui = Routine.forUI();
+    sel.value = ui.preset || '';
+    if (hint) {
+      if (ui.configured) {
+        hint.textContent = ui.presetLabel + ' · ' + ui.hint +
+          '（这是模板起点，按你学校的真实作息调整；未调整前别当成系统已经知道你的时间）';
+      } else {
+        hint.textContent = '没设置作息时按上面「每日学习时间」通用排；住校生建议选一个贴近的模板。';
+      }
+    }
+  }
+
+  function onRoutineChange() {
+    if (typeof Routine === 'undefined') return;
+    const v = ($('p-routine') || {}).value || '';
+    if (v) Routine.applyPreset(v);
+    else Routine.clear();
+    syncRoutineUI();
+    renderPlanner();
+    if (typeof toast === 'function') toast(v ? '已应用作息模板，可再按学校实际调整' : '已清除作息设置', 'success');
+  }
+
   function renderPlanner() {
     // 侧重科目下拉
     const sel = $('p-subject');
@@ -953,6 +1016,8 @@ const App = (() => {
       const h = parseInt(g.hours, 10);
       if (h >= 1 && h <= 8) $('p-hours').value = String(h);
     }
+    // ★ 2026-11-07：作息下拉（住校 / 走读）
+    syncRoutineUI();
 
     const plan = Planner.getTodayTasks();
     const dc = $('daily-plan');
@@ -972,19 +1037,55 @@ const App = (() => {
     }
 
     // 本周节奏
+    //
+    // ★ 2026-11-07 修：删掉原来的伪数据公式
+    //   旧代码在没有 weeklyPlan 时用 `Math.round(120 + (i % 3) * 30)`
+    //   凭空造出每天的分钟数画条形图 —— 用户说「缺真实数据」，
+    //   这就是最典型的一处：界面在一本正经地显示编出来的数字。
+    //
+    //   现在优先级：
+    //     ① 用户设了作息 → 显示他自己的可用分钟（真实，来自 Routine）
+    //     ② AI 生过周计划 → 显示 AI 给的 weeklyPlan（明确标「AI 建议」）
+    //     ③ 都没有 → 显示「—」和一句提示，绝不编数字
     const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     const dow = (new Date().getDay() + 6) % 7;
     const last = Storage.get('last_plan', null);
     const weekly = (last && last.t && last.t.weeklyPlan) || [];
+    const hasRoutine = (typeof Routine !== 'undefined') && Routine.isConfigured();
+    const maxM = 480;
     $('weekly-plan').innerHTML = days.map((d, i) => {
-      const w = weekly[i] || {};
-      const mins = w.totalMinutes || (i === dow ? (plan ? plan.tasks.reduce((s, t) => s + ((t.t && t.t.duration) || 0), 0) : 0) : Math.round(120 + (i % 3) * 30));
-      const maxM = 480;
-      const pct = Math.max(4, Math.min(100, Math.round(mins / maxM * 100)));
+      let mins = null;
+      let label = '';
+      let source = '';
+      if (hasRoutine) {
+        mins = Routine.minutesFor(i);
+        label = (mins == null) ? '—' : (Math.round(mins / 60 * 10) / 10 + 'h');
+        source = '我的作息';
+      } else if (weekly[i] && weekly[i].totalMinutes) {
+        mins = Number(weekly[i].totalMinutes);
+        label = Math.round(mins / 60 * 10) / 10 + 'h';
+        source = 'AI 建议';
+      } else if (i === dow && plan) {
+        // 只有「今天」可以用真实计划时长，其余日子不编
+        mins = plan.tasks.reduce((s, t) => s + ((t.t && t.t.duration) || 0), 0);
+        label = Math.round(mins / 60 * 10) / 10 + 'h';
+        source = '今日计划';
+      } else {
+        label = '—';
+      }
+      const pct = (mins != null) ? Math.max(4, Math.min(100, Math.round(mins / maxM * 100))) : 0;
+      const fill = mins != null
+        ? '<div class="wk-bar-fill" style="width:' + pct + '%"></div>'
+        : '<div class="wk-bar-fill" style="width:0;background:transparent"></div>';
       return '<div class="wk-row"><span class="wk-day"' + (i === dow ? ' style="color:var(--ds-500);font-weight:600"' : '') + '>' + d + (i === dow ? ' · 今天' : '') + '</span>' +
-        '<div class="wk-bar"><div class="wk-bar-fill" style="width:' + pct + '%"></div></div>' +
-        '<span class="wk-info">' + Math.round(mins / 60 * 10) / 10 + 'h</span></div>';
+        '<div class="wk-bar">' + fill + '</div>' +
+        '<span class="wk-info" title="' + esc(source) + '">' + esc(label) + '</span></div>';
     }).join('');
+    // 没设作息也不编：给一条明确说明
+    if (!hasRoutine && !weekly.length) {
+      $('weekly-plan').innerHTML += '<div class="hint" style="margin-top:8px;font-size:11.5px">' +
+        '还没设置作息。选一个节奏（或让 AI 生成计划）后，这里才会显示每周安排 —— 没有数据就不编数字。</div>';
+    }
 
     const tips = (last && last.t && last.t.tips) || null;
     const tipEl = $('plan-tips');
@@ -5933,9 +6034,120 @@ const App = (() => {
   // ════════════════════════════════════════════════════════════
   //  设置
   // ════════════════════════════════════════════════════════════
+  /**
+   * 考试制度 / 界面语言设置（2026-11-07）
+   * 切换 region 会让所有 AI 换一套制度框架，并停用中国高考专用模块。
+   */
+  function syncRegionUI() {
+    if (typeof Region === 'undefined') return;
+    const sel = $('set-region');
+    const langSel = $('set-lang');
+    const notice = $('region-notice');
+    const state = $('region-state');
+    const meta = Region.meta();
+
+    if (sel && sel.options.length === 0) {
+      meta.all.forEach(x => {
+        const o = document.createElement('option'); o.value = x.id; o.textContent = x.label;
+        sel.appendChild(o);
+      });
+    }
+    if (sel) sel.value = meta.id;
+    if (langSel && typeof I18n !== 'undefined') {
+      if (langSel.options.length === 0) {
+        I18n.LANGS.forEach(l => {
+          const o = document.createElement('option');
+          o.value = l; o.textContent = { 'zh-CN': '简体中文', 'ja-JP': '日本語', 'ko-KR': '한국어' }[l] || l;
+          langSel.appendChild(o);
+        });
+      }
+      langSel.value = I18n.current();
+    }
+    if (state) state.textContent = meta.label;
+
+    // 适用学年度（仅韩国等有 curriculumVariants 的 region 显示）
+    const curSel = $('set-curriculum');
+    if (curSel && typeof Region !== 'undefined') {
+      const vm = Region.variantMeta();
+      const p = Region.profile();
+      const variants = p.curriculumVariants
+        ? Object.keys(p.curriculumVariants).map(k => ({ id: k, label: p.curriculumVariants[k].label }))
+        : [];
+      curSel.innerHTML = '';
+      if (!variants.length) {
+        const o = document.createElement('option'); o.value = ''; o.textContent = '不适用';
+        curSel.appendChild(o); curSel.disabled = true;
+      } else {
+        curSel.disabled = false;
+        variants.forEach(v => {
+          const o = document.createElement('option'); o.value = v.id; o.textContent = v.label;
+          curSel.appendChild(o);
+        });
+        curSel.value = Region.curriculum();
+      }
+    }
+    // 思考强度
+    const rSel = $('set-reasoning');
+    if (rSel) {
+      try { rSel.value = Storage.get('reasoning_effort', 'standard'); } catch (e) { rSel.value = 'standard'; }
+    }
+
+    if (notice && typeof I18n !== 'undefined') {
+      const p = Region.profile();
+      const lines = [I18n.scopeNotice()];
+      if (p.notes) lines.push(p.notes);
+      if (I18n.partialNotice()) lines.push(I18n.partialNotice());
+      if (p.disabledModules && p.disabledModules.length) {
+        lines.push('本制度下停用：' + p.disabledModules.join('、') + '。');
+      }
+      notice.innerHTML = lines.filter(Boolean).map(x => '<div>· ' + esc(x) + '</div>').join('');
+    }
+  }
+
+  function onRegionChange() {
+    if (typeof Region === 'undefined') return;
+    const v = ($('set-region') || {}).value || 'cn-gaokao';
+    Region.set(v);
+    // 同步界面语言到该制度的默认语言（用户仍可单独改）
+    if (typeof I18n !== 'undefined' && v !== 'cn-gaokao') {
+      I18n.set(Region.profile().lang);
+    }
+    syncRegionUI();
+    if (typeof toast === 'function') toast('已切换考试制度，AI 会按新制度回答', 'success');
+  }
+
+  function onLangChange() {
+    if (typeof I18n === 'undefined') return;
+    const v = ($('set-lang') || {}).value || 'zh-CN';
+    I18n.set(v);
+    syncRegionUI();
+    I18n.applyDOM();
+    if (typeof toast === 'function') toast('界面语言已切换（部分界面仍为中文）', 'success');
+  }
+
+  function onCurriculumChange() {
+    if (typeof Region === 'undefined') return;
+    const v = ($('set-curriculum') || {}).value || '';
+    if (v && Region.setCurriculum(v)) {
+      // 换교육과정 → 缓存必须失效，否则拿旧学年度的知识点当新制度用
+      try { if (typeof ModelCache !== 'undefined') ModelCache.invalidate(); } catch (e) {}
+      syncRegionUI();
+      if (typeof toast === 'function') toast('已切换适用学年度', 'success');
+    }
+  }
+
+  function onReasoningChange() {
+    const v = ($('set-reasoning') || {}).value || 'standard';
+    try { Storage.set('reasoning_effort', v); } catch (e) {}
+    if (typeof toast === 'function') {
+      toast(v === 'high' ? '已开启深度思考（复杂题更稳，但会慢一些）' : '思考强度已更新', 'success');
+    }
+  }
+
   function renderSettings() {
     initProviderSelect('set-provider', 'set-model', 'set-model-custom-group', 'set-model-custom', 'set-baseurl-group', 'set-baseurl', 'set-key');
     initVisionSelect();
+    syncRegionUI();   // ★ 2026-11-07 考试制度/语言卡片
     renderDifficultyRows();
     renderGoalRows();
     renderTtsSettings();
@@ -6663,8 +6875,35 @@ const App = (() => {
       const parts = [persona()];
       const digest = memoryDigest(10, 300);
       if (digest) parts.push(digest);
+      // ★ 2026-11-07：静默备课包（提前算好，学生卡住时才逐层给）
+      try {
+        if (typeof ModelCache !== 'undefined') {
+          const pb = ModelCache.promptBlock();
+          if (pb) parts.push(pb);
+        }
+      } catch (e) {}
+      // ★ 过程信号：只作弱证据提示，不改分数
+      try {
+        if (typeof Engagement !== 'undefined') {
+          const eb = Engagement.promptBlock();
+          if (eb) parts.push(eb);
+        }
+      } catch (e) {}
       return parts.join('\n\n');
     });
+
+    /**
+     * ★ 2026-11-07：启动时静默预计算（提前建模）
+     *
+     * 只做免费的本地计算，不发 LLM 请求（开源版默认没配 Key，
+     * 用户没点按钮却在烧额度是越界）。带指纹失效、24h 过期、
+     * 单例并发锁；失败静默吞掉，绝不阻塞启动。
+     */
+    try {
+      if (typeof ModelCache !== 'undefined') {
+        ModelCache.precompute({ silent: true }).catch(() => {});
+      }
+    } catch (e) {}
 
     // 导航
     document.querySelectorAll('.nav-item').forEach(el => {
@@ -6717,6 +6956,7 @@ const App = (() => {
 
     // 规划
     on('btn-gen-plan', 'click', generatePlan);
+    on('p-routine', 'change', onRoutineChange);   // ★ 2026-11-07 作息
 
     // 出卷
     on('btn-gen-quiz', 'click', generateQuiz);
@@ -6951,6 +7191,10 @@ const App = (() => {
     // 设置
     // ★ 匿名使用统计（2026-10-31 补：之前 HTML 有卡片但无任何绑定）
     bindUsageStats();
+    on('set-region', 'change', onRegionChange);
+    on('set-lang', 'change', onLangChange);
+    on('set-curriculum', 'change', onCurriculumChange);
+    on('set-reasoning', 'change', onReasoningChange);
     on('btn-set-test', 'click', async () => {
       const cfg = readProviderConfig('set-provider', 'set-model', 'set-model-custom', 'set-baseurl', 'set-key');
       await testProviderConfig(cfg, $('set-status'), $('btn-set-test'));

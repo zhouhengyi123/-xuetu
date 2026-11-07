@@ -591,7 +591,22 @@ const ProgressEngine = (() => {
     var headroom = fullMark - ev.currentScore;
     var days = daysLeft(goal);
     var hoursPerDay = Number(goal.hours) || 3;
-    var efficiency = opts.efficiency != null ? opts.efficiency : 0.55;   // 有效学习占比
+    /**
+     * ★ 2026-11-07：有效投入系数改为「可选的真实过程信号」
+     *
+     * 原来固定 0.55（拍脑袋）。现在 Engagement.effectiveFactor() 会读
+     * 真实落盘的活跃天数 / 专注率 / 计划完成度，做**有界的小幅**微调
+     * （0.40~0.70）；没有数据时返回 null，保留 0.55，不假装有信息。
+     *
+     * 关键约束（审计结论）：
+     *   · 这个系数只进 timeFactor，影响「未来能提多少」，
+     *     **不进 ev.currentScore**，不改变「现在水平」；
+     *   · 过程信号与考试成绩相关而非独立，不能当能力证据塞进贝叶斯融合，
+     *     否则会虚假收窄区间 —— 所以下面同步把 seFuture 放宽。
+     */
+    var observedEff = (typeof Engagement !== 'undefined') ? Engagement.effectiveFactor() : null;
+    var useObserved = observedEff != null;
+    var efficiency = opts.efficiency != null ? opts.efficiency : (useObserved ? observedEff : 0.55);
     var tau = opts.tau || 900;                                           // 时间常数（小时）
     var k = opts.k != null ? opts.k : 0.85;                              // 全局系数
     var maxGainRatio = opts.maxGainRatio != null ? opts.maxGainRatio : 1;

@@ -929,6 +929,28 @@ ${svgContent}
     const DshTools = require('./electron-dsh-tools.js');
     return await DshTools.execute('web_fetch', args, WORKSPACE || '.');
   },
+
+  /**
+   * ★ 2026-11-07 修：generate_image 以前只在 TOOLS 里定义了 schema，
+   *   HANDLERS 里没有实现 —— 模型一旦调用就会得到「未知工具: generate_image」。
+   *
+   *   electron-image-gen.js 其实早已实现了完整的 generateImage(args, config)，
+   *   这里把它接上，并把工作区目录传进去（图片会写到用户授权目录里）。
+   *   没有配置图片 API key 时，generateImage 会返回明确的错误，
+   *   Agent 能看到并改用文字讲解，不会再卡死。
+   */
+  async generate_image(args) {
+    const ImageGen = require('./electron-image-gen.js');
+    const r = await ImageGen.generateImage(args || {}, { workspace: WORKSPACE || '.' });
+    if (!r.ok) return { ok: false, error: r.error };
+    return {
+      ok: true,
+      path: r.path,
+      size: r.size,
+      mediaType: r.mediaType,
+      message: '图片已生成：' + r.path,
+    };
+  },
 };
 
 function escXml(s) {
